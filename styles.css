@@ -2164,3 +2164,24 @@ body.simple-mode #dailyRecipeSection{ display:none !important; }
   border-color:var(--herb);
   color:#fff;
 }
+
+/* —— Transfer-to-main sheet —— */
+.tr-actions{ display:flex; gap:8px; margin-bottom:10px; }
+.tr-list{ max-height:50vh; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+.tr-row{
+  display:flex; align-items:center; gap:12px;
+  width:100%; text-align:right;
+  border:1px solid var(--line); background:var(--surface);
+  border-radius:12px; padding:12px 14px;
+  font-family:'Assistant',sans-serif; font-size:16px; color:var(--ink);
+  cursor:pointer;
+}
+.tr-row.on{ border-color:var(--herb); background:var(--herb-soft); }
+.tr-check{
+  width:24px; height:24px; border-radius:7px; flex-shrink:0;
+  border:2px solid var(--line); display:flex; align-items:center; justify-content:center;
+  font-size:14px; color:#fff;
+}
+.tr-row.on .tr-check{ background:var(--herb); border-color:var(--herb); }
+.tr-name{ flex:1; }
+.tr-foot{ margin-top:14px; padding-top:10px; border-top:1px solid var(--line); }

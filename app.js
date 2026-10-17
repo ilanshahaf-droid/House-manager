@@ -1175,14 +1175,17 @@ function renameShoppingList(id){
 function openListMenu(id){
   const l = shoppingLists[id];
   if(!l) return;
-  const { done } = listStats(id);
+  const { done, total } = listStats(id);
   const ov = openSheet('listMenuSheet', `
     <div class="sheet-head"><h3>${escHtml(l.name)}</h3><button type="button" class="sheet-x" id="lmClose" aria-label="סגירה">×</button></div>
     <button type="button" class="lm-row" id="lmRename">✏️  שינוי שם</button>
+    ${id!=='main' && total ? '<button type="button" class="lm-row" id="lmTransfer">➡️  בחרו פריטים לרשימה הראשית</button>' : ''}
     <button type="button" class="lm-row" id="lmClear" ${done?'':'disabled'}>🧹  מחקו פריטים שסומנו (${done})</button>
     ${id==='main' ? '' : '<button type="button" class="lm-row danger" id="lmDelete">🗑  מחיקת הרשימה</button>'}`, 'top');
   ov.querySelector('#lmClose').onclick = ()=> ov.remove();
   ov.querySelector('#lmRename').onclick = ()=>{ ov.remove(); renameShoppingList(id); };
+  const tr = ov.querySelector('#lmTransfer');
+  if(tr) tr.onclick = ()=>{ ov.remove(); openTransferToMainSheet(id); };
   ov.querySelector('#lmClear').onclick = ()=>{
     ov.remove();
     showConfirmModal(`למחוק את ${done} הפריטים שסומנו ב"${l.name}"?`, ()=>{
@@ -1193,6 +1196,115 @@ function openListMenu(id){
   };
   const del = ov.querySelector('#lmDelete');
   if(del) del.onclick = ()=>{ ov.remove(); deleteShoppingList(id); };
+}
+
+/** Pick items from a saved/secondary list and merge them into the main shopping list. */
+function openTransferToMainSheet(sourceId){
+  if(!sourceId || sourceId === 'main' || !shoppingLists[sourceId]) return;
+  if(!shoppingLists.main){
+    shoppingLists.main = { name:'רשימה ראשית', items:[], bought:[], quantities:{}, notes:{} };
+  }
+  const src = shoppingLists[sourceId];
+  const items = [...(src.items || [])].sort((a,b)=>a.localeCompare(b,'he'));
+  if(!items.length){
+    alert('הרשימה ריקה — אין פריטים להעברה');
+    return;
+  }
+  const selected = new Set(items); // start with all selected — easy to uncheck
+  const ov = openSheet('transferSheet', `
+    <div class="sheet-head">
+      <h3>העברה לרשימה הראשית</h3>
+      <button type="button" class="sheet-x" id="trClose" aria-label="סגירה">×</button>
+    </div>
+    <p class="settings-hint" style="margin:0 0 10px;">מ־«${escHtml(src.name)}» · לחצו על פריט כדי לבחור / לבטל</p>
+    <div class="tr-actions">
+      <button type="button" class="sm-tool-btn" id="trAll">סמנו הכול</button>
+      <button type="button" class="sm-tool-btn" id="trNone">נקו בחירה</button>
+    </div>
+    <div class="tr-list" id="trList"></div>
+    <div class="tr-foot">
+      <label class="clearcat-item" style="margin-bottom:10px;">
+        <input type="checkbox" id="trRemoveSrc" checked> הסירו מהרשימה השמורה אחרי ההעברה
+      </label>
+      <button type="button" class="import-btn" id="trGo">הוסיפו לרשימה הראשית (<span id="trCount">${selected.size}</span>)</button>
+    </div>`, 'tall');
+
+  function paint(){
+    const listEl = ov.querySelector('#trList');
+    listEl.innerHTML = items.map(name=>{
+      const on = selected.has(name);
+      const qty = (src.quantities||{})[name];
+      return `<button type="button" class="tr-row${on?' on':''}" data-name="${escAttr(name)}">
+        <span class="tr-check">${on?'✓':''}</span>
+        <span class="tr-name">${escHtml(name)}${qty?` <span class="shop-item-qty">(${escHtml(qty)})</span>`:''}</span>
+      </button>`;
+    }).join('');
+    ov.querySelector('#trCount').textContent = selected.size;
+    listEl.querySelectorAll('.tr-row').forEach(row=>{
+      row.onclick = ()=>{
+        const n = row.dataset.name;
+        if(selected.has(n)) selected.delete(n); else selected.add(n);
+        paint();
+      };
+    });
+  }
+  paint();
+  ov.querySelector('#trClose').onclick = ()=> ov.remove();
+  ov.querySelector('#trAll').onclick = ()=>{ items.forEach(i=>selected.add(i)); paint(); };
+  ov.querySelector('#trNone').onclick = ()=>{ selected.clear(); paint(); };
+  ov.querySelector('#trGo').onclick = ()=>{
+    if(selected.size === 0){ alert('לא נבחרו פריטים'); return; }
+    const removeSrc = ov.querySelector('#trRemoveSrc').checked;
+    transferItemsToMain(sourceId, [...selected], removeSrc);
+    ov.remove();
+    // switch to main so the user sees the result
+    if(activeListId !== 'main') switchShoppingList('main');
+    else refreshShoppingViews();
+    alert(`✓ ${selected.size} פריטים נוספו לרשימה הראשית`);
+  };
+}
+
+function transferItemsToMain(sourceId, names, removeFromSource){
+  if(!shoppingLists.main) shoppingLists.main = { name:'רשימה ראשית', items:[], bought:[], quantities:{}, notes:{} };
+  const main = shoppingLists.main;
+  const src = shoppingLists[sourceId];
+  if(!main.items) main.items = [];
+  if(!main.bought) main.bought = [];
+  if(!main.quantities) main.quantities = {};
+  if(!main.notes) main.notes = {};
+  const srcQty = (src && src.quantities) || {};
+  const srcNotes = (src && src.notes) || {};
+
+  names.forEach(name=>{
+    if(!main.items.includes(name)) main.items.push(name);
+    // unmark bought on main so it shows as needed
+    main.bought = main.bought.filter(i=>i!==name);
+    if(srcQty[name] && !main.quantities[name]) main.quantities[name] = srcQty[name];
+    if(srcNotes[name] && !main.notes[name]) main.notes[name] = srcNotes[name];
+  });
+
+  if(removeFromSource && src){
+    const drop = new Set(names);
+    src.items = (src.items || []).filter(i=>!drop.has(i));
+    src.bought = (src.bought || []).filter(i=>!drop.has(i));
+    names.forEach(n=>{
+      if(src.quantities) delete src.quantities[n];
+      if(src.notes) delete src.notes[n];
+      if(src.addedBy) delete src.addedBy[n];
+    });
+  }
+
+  // keep live Sets in sync if main or source is currently active
+  if(activeListId === 'main'){
+    names.forEach(n=>{ shoppingList.add(n); boughtItems.delete(n); });
+  }
+  if(activeListId === sourceId && removeFromSource){
+    names.forEach(n=>{ shoppingList.delete(n); boughtItems.delete(n); });
+  }
+
+  localStorage.setItem('shopping_lists', JSON.stringify(shoppingLists));
+  scheduleShoppingPush();
+  pushSync();
 }
 function openListsSheet(){
   const card = (id)=>{
@@ -2494,6 +2606,9 @@ function renderShoppingPanel(){
 
   html += `<div class="shop-actions-bar">
     <button type="button" class="danger" id="shopClearBoughtBtn" ${checkedCount? '':'disabled'}>🧹 נקו מסומנים${checkedCount?` (${checkedCount})`:''}</button>
+    ${activeListId !== 'main' && shoppingList.size
+      ? `<button type="button" class="primary-action" id="shopTransferBtn">➡️ העבירו לרשימה הראשית</button>`
+      : ''}
     <button type="button" class="primary-action" id="shopSaveListBtn">💾 שמרו רשימה לשימוש בהמשך</button>
   </div>`;
 
@@ -2551,6 +2666,10 @@ function renderShoppingPanel(){
   const saveListBtn = document.getElementById('shopSaveListBtn');
   if(saveListBtn){
     saveListBtn.onclick = ()=> saveShoppingListForLater();
+  }
+  const transferBtn = document.getElementById('shopTransferBtn');
+  if(transferBtn){
+    transferBtn.onclick = ()=> openTransferToMainSheet(activeListId);
   }
   el.querySelectorAll('.shop-freq-chip').forEach(chip=>{
     chip.onclick = ()=>{

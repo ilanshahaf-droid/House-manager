@@ -63,7 +63,15 @@
   </div>
 
   <div class="tab-content" id="tab-recipes">
-    <section id="tonightSection" style="margin-top:16px;">
+    <section style="margin-top:16px;">
+      <div class="filters-wrap">
+        <div class="search-row">
+          <input type="search" id="searchInput" name="recipe_search" placeholder="חיפוש מתכון לפי שם..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
+        </div>
+        <div class="filter-row" id="filterRow"></div>
+      </div>
+    </section>
+    <section id="tonightSection">
       <div class="section-head">
         <h2 style="margin:0;">מה לבשל הערב?</h2>
         <button type="button" class="ranout-toggle" id="tonightRefreshBtn" title="הצעות אחרות">↻</button>
@@ -85,15 +93,9 @@
       <div id="dailyRecipe"></div>
     </section>
     <section>
-      <h2>מתכונים מתאימים</h2>
-      <div class="filters-wrap">
-        <div class="search-row">
-          <input type="search" id="searchInput" name="recipe_search" placeholder="חיפוש מתכון לפי שם..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
-        </div>
-        <div class="filter-row" id="filterRow"></div>
-      </div>
+      <h2>מתכונים</h2>
       <div id="recipeResults">
-        <p class="empty-state">ברגע שיהיה משהו במקרר, כאן יופיעו הצעות למתכונים — מהקרוב ביותר למה שיש, ועד לרחוקים יותר.</p>
+        <p class="empty-state">כאן יופיעו מתכונים — חפשו למעלה או סמנו מצרכים במקרר.</p>
       </div>
     </section>
   </div>
