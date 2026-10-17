@@ -63,7 +63,14 @@
   </div>
 
   <div class="tab-content" id="tab-recipes">
-    <section style="margin-top:16px;">
+    <section id="tonightSection" style="margin-top:16px;">
+      <div class="section-head">
+        <h2 style="margin:0;">מה לבשל הערב?</h2>
+        <button type="button" class="ranout-toggle" id="tonightRefreshBtn" title="הצעות אחרות">↻</button>
+      </div>
+      <div id="tonightSuggestions"></div>
+    </section>
+    <section style="margin-top:16px;" id="weekPlanSection">
       <div class="section-head">
         <h2 style="margin:0;">תוכנית שבועית</h2>
         <button class="ranout-toggle" id="weekToggleBtn">▾</button>
@@ -73,7 +80,7 @@
     <section id="topSuggestionSection" style="display:none;">
       <div id="topSuggestion"></div>
     </section>
-    <section>
+    <section id="dailyRecipeSection">
       <h2>מתכון היום</h2>
       <div id="dailyRecipe"></div>
     </section>
@@ -102,6 +109,19 @@
   </div>
 
   <div class="tab-content" id="tab-settings">
+
+    <div class="settings-topic">
+      <button type="button" class="topic-head" aria-expanded="false">
+        <h2>מצב תצוגה</h2><span class="topic-arrow">▾</span>
+      </button>
+      <div class="topic-body">
+        <div class="settings-subtitle">מצב פשוט — קניות ומתכונים</div>
+        <p class="settings-hint">מסתיר את לשונית המקרר ומצמצם חלקים שפחות רלוונטיים למי שמשתמש בעיקר ברשימת קניות ובמתכונים.</p>
+        <label class="clearcat-item" style="margin-bottom:8px;">
+          <input type="checkbox" id="simpleModeToggle"> הפעילו מצב פשוט
+        </label>
+      </div>
+    </div>
 
     <div class="settings-topic">
       <button type="button" class="topic-head" aria-expanded="false">
@@ -149,11 +169,13 @@
       </button>
       <div class="topic-body">
         <div class="settings-subtitle">הוספת מתכונים</div>
-        <p class="settings-hint">טוענים קובץ Word (.docx) או PDF שמכיל מתכון אחד, או מזינים מתכון ידנית לפי אותם שדות. המערכת תנסה לזהות כותרת, מצרכים והוראות הכנה מתוך קובץ — ותאפשר לכם לתקן לפני השמירה.</p>
+        <p class="settings-hint">קובץ Word/PDF, הדבקת טקסט (וואטסאפ / אתר), קישור למתכון, או הזנה ידנית. אחרי הזיהוי אפשר לתקן לפני השמירה.</p>
         <input type="file" id="importFileInput" accept=".docx,.pdf" style="display:none;">
         <div class="add-recipe-btn-row">
-          <button class="import-btn" id="importFileBtn">📄 בחרו קובץ להעלאה</button>
-          <button class="import-btn secondary" id="manualAddRecipeBtn">✏️ הוסיפו מתכון ידנית</button>
+          <button class="import-btn" id="importFileBtn">📄 קובץ</button>
+          <button class="import-btn secondary" id="importTextBtn">📋 הדביקו טקסט</button>
+          <button class="import-btn secondary" id="importUrlBtn">🔗 קישור</button>
+          <button class="import-btn secondary" id="manualAddRecipeBtn">✏️ ידנית</button>
         </div>
         <div class="cam-status" id="importStatus"></div>
         <div id="importForm"></div>
@@ -294,8 +316,13 @@
     <span class="sm-title">מצב קניות</span>
     <button class="sm-close" id="smCloseBtn">סגור</button>
   </div>
+  <div class="sm-progress" id="smProgress"></div>
   <div class="sm-search-wrap">
     <input type="search" id="smSearchInput" placeholder="חיפוש פריט..." autocomplete="off" enterkeyhint="search">
+  </div>
+  <div class="sm-toolbar">
+    <button type="button" class="sm-tool-btn" id="smHideCheckedBtn">הסתירו מסומנים</button>
+    <button type="button" class="sm-tool-btn" id="smClearBoughtBtn">נקו מסומנים</button>
   </div>
   <div class="sm-list" id="smList"></div>
 </div>

@@ -92,6 +92,9 @@ let filters = { search:'', diet:'all', maxTime:0, readyNow:false, almostReady:fa
 let readyNowAutoApplied = false;
 let isDark = localStorage.getItem('theme') === 'dark';
 let showCheckedShop = false;
+let smHideChecked = localStorage.getItem('sm_hide_checked') !== '0'; // default: hide checked in supermarket mode
+let simpleMode = localStorage.getItem('simple_mode') === '1';
+let tonightOffset = 0;
 const SUPABASE_URL = 'https://pznpibrlcbjpcoxagxns.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6bnBpYnJsY2JqcGNveGFneG5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NjEzMjUsImV4cCI6MjEwMjUzNzMyNX0.dvfKlGyI1U_E7G5POQJkLn28gky7cTyJbQqT3Mie_YU';
 
@@ -2247,7 +2250,7 @@ function openWeekShopPreview(){
 }
 
 
-// ---- "ההצעה המובילה" — the best match for what is in the fridge right now (design idea from the Lovable "Elevate" prototype) ----
+// ---- "ההצעה המובילה" — best fridge match (kept for compatibility) ----
 let topSuggestionOffset = 0;
 function topSuggestionCandidates(){
   if(fridge.size === 0) return [];
@@ -2261,6 +2264,59 @@ function topSuggestionCandidates(){
     .sort((a,b)=> (b.have.length/b.total) - (a.have.length/a.total) || b.have.length - a.have.length
                   || (cookedSet.has(a.r.name) - cookedSet.has(b.r.name)) || a.r.name.localeCompare(b.r.name,'he'))
     .slice(0, 6);
+}
+
+/** "מה לבשל הערב?" — 3 suggestions from favorites, quick meals, and fridge match. */
+function tonightCandidates(){
+  const scored = RECIPES.map(r=>{
+    const names = recipeIngNames(r);
+    const have = names.filter(i=>fridge.has(i));
+    const missing = names.filter(i=>!fridge.has(i));
+    const mins = minutesOf(r);
+    let score = 0;
+    if(favorites.has(r.name)) score += 40;
+    if(mins <= 20) score += 25;
+    else if(mins <= 35) score += 12;
+    if(fridge.size > 0 && names.length){
+      score += Math.round((have.length / names.length) * 35);
+      if(missing.length === 0) score += 20;
+    }
+    if(cookedSet.has(r.name)) score -= 15;
+    if(r.healthy) score += 5;
+    return { r, have, missing, total: names.length, mins, score };
+  });
+  scored.sort((a,b)=> b.score - a.score || a.mins - b.mins || a.r.name.localeCompare(b.r.name,'he'));
+  // rotate window so refresh cycles through options
+  const start = tonightOffset % Math.max(1, scored.length);
+  const rotated = scored.slice(start).concat(scored.slice(0, start));
+  return rotated.slice(0, 3);
+}
+function renderTonightSuggestions(){
+  const el = document.getElementById('tonightSuggestions');
+  if(!el) return;
+  const cands = tonightCandidates();
+  if(!cands.length){
+    el.innerHTML = '<p class="tonight-empty">אין עדיין מתכונים להצעה.</p>';
+    return;
+  }
+  el.innerHTML = `<div class="tonight-grid">${cands.map(({r, have, missing, mins})=>{
+    const full = missing.length === 0 && have.length > 0;
+    const isFav = favorites.has(r.name);
+    return `<div class="tonight-card" data-name="${escAttr(r.name)}">
+      <div class="tc-title">${isFav?'★ ':''}${escHtml(r.name)}</div>
+      <div class="tc-meta">${escHtml(r.time||'')}${r.cuisine? ' · '+escHtml(r.cuisine):''}</div>
+      <div class="tc-tags">
+        ${mins<=25?'<span class="tonight-tag">מהיר</span>':''}
+        ${isFav?'<span class="tonight-tag fav">מועדף</span>':''}
+        ${fridge.size>0?(full
+          ?'<span class="tonight-tag">יש הכול ✓</span>'
+          :`<span class="tonight-tag miss">${missing.length} חסרים</span>`):''}
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+  el.querySelectorAll('.tonight-card').forEach(card=>{
+    card.onclick = ()=> openRecipeCardByName(card.dataset.name);
+  });
 }
 function renderHeaderSub(){
   const el = document.getElementById('headerSub');
@@ -2369,10 +2425,34 @@ function renderShoppingPanel(){
 
   if(shoppingList.size===0){
     html += '<p class="shopping-empty">הרשימה ריקה — הוסיפו מצרכים חסרים ממתכון או הקלידו למעלה</p>';
+    const freqEmpty = getAllKnownItems()
+      .filter(it => it.freq > 0)
+      .sort((a,b)=> b.freq - a.freq || a.name.localeCompare(b.name,'he'))
+      .slice(0, 12);
+    if(freqEmpty.length){
+      html += `<div class="shop-freq-section">
+        <div class="shop-freq-title">בשימוש תדיר — לחצו להוספה</div>
+        <div class="shop-freq-grid">${freqEmpty.map(it=>
+          `<button type="button" class="shop-freq-chip" data-name="${escAttr(it.name)}">${escHtml(it.name)}</button>`
+        ).join('')}</div>
+      </div>`;
+    }
     el.innerHTML = html;
     wireListSwitcher();
     wireShopToolbar();
     renderShopManageBox();
+    el.querySelectorAll('.shop-freq-chip').forEach(chip=>{
+      chip.onclick = ()=>{
+        const name = chip.dataset.name;
+        shoppingList.add(name);
+        boughtItems.delete(name);
+        recordUsage(name);
+        saveShoppingList();
+        saveBought();
+        renderShoppingPanel();
+        renderTabBadges();
+      };
+    });
     return;
   }
 
@@ -2417,6 +2497,20 @@ function renderShoppingPanel(){
     <button type="button" class="primary-action" id="shopSaveListBtn">💾 שמרו רשימה לשימוש בהמשך</button>
   </div>`;
 
+  // Frequent items (history) not already on the list
+  const freq = getAllKnownItems()
+    .filter(it => it.freq > 0 && !shoppingList.has(it.name))
+    .sort((a,b)=> b.freq - a.freq || a.name.localeCompare(b.name,'he'))
+    .slice(0, 12);
+  if(freq.length){
+    html += `<div class="shop-freq-section">
+      <div class="shop-freq-title">בשימוש תדיר — לחצו להוספה</div>
+      <div class="shop-freq-grid">${freq.map(it=>
+        `<button type="button" class="shop-freq-chip" data-name="${escAttr(it.name)}">${escHtml(it.name)}</button>`
+      ).join('')}</div>
+    </div>`;
+  }
+
   el.innerHTML = html;
   wireListSwitcher();
   wireShopToolbar();
@@ -2458,6 +2552,18 @@ function renderShoppingPanel(){
   if(saveListBtn){
     saveListBtn.onclick = ()=> saveShoppingListForLater();
   }
+  el.querySelectorAll('.shop-freq-chip').forEach(chip=>{
+    chip.onclick = ()=>{
+      const name = chip.dataset.name;
+      shoppingList.add(name);
+      boughtItems.delete(name);
+      recordUsage(name);
+      saveShoppingList();
+      saveBought();
+      renderShoppingPanel();
+      renderTabBadges();
+    };
+  });
 }
 
 /** Snapshot the current shopping list as a new named list (ready to reuse later). */
@@ -2683,17 +2789,34 @@ function playTimerBeep(){
 
 function renderShoppingModeList(){
   const el = document.getElementById('smList');
+  const prog = document.getElementById('smProgress');
+  const total = shoppingList.size;
+  const done = [...shoppingList].filter(i=>boughtItems.has(i)).length;
+  if(prog){
+    const pct = total ? Math.round((done/total)*100) : 0;
+    prog.innerHTML = total
+      ? `<div>${done}/${total} נקנו</div><div class="sm-progress-bar"><i style="width:${pct}%"></i></div>`
+      : '';
+  }
+  const hideBtn = document.getElementById('smHideCheckedBtn');
+  if(hideBtn){
+    hideBtn.textContent = smHideChecked ? 'הציגו מסומנים' : 'הסתירו מסומנים';
+    hideBtn.classList.toggle('active', smHideChecked);
+  }
+
   const q = norm(smSearchQuery).toLowerCase();
   let items = [...shoppingList];
+  if(smHideChecked) items = items.filter(i => !boughtItems.has(i));
   if(q) items = items.filter(i => i.toLowerCase().includes(q));
   if(shoppingList.size===0){
     el.innerHTML = '<div class="sm-empty">הרשימה ריקה</div>';
     return;
   }
   if(items.length===0){
-    el.innerHTML = '<div class="sm-empty">לא נמצאו פריטים תואמים</div>';
+    el.innerHTML = '<div class="sm-empty">'+(q?'לא נמצאו פריטים תואמים':(smHideChecked?'הכול סומן ✓ — כל הכבוד!':'אין פריטים'))+'</div>';
     return;
   }
+  // Aisle order ≈ category order (produce → dairy → pantry…)
   const catOrder = allCategoryNames().concat(['אחר']);
   const groups = {};
   items.forEach(item=>{
@@ -2736,7 +2859,7 @@ function openShoppingMode(){
   document.getElementById('shoppingModeOverlay').classList.add('active');
   acquireWakeLock();
   renderShoppingModeList();
-  if(searchInput) setTimeout(()=>searchInput.focus(), 200);
+  // Don't auto-focus search — keeps the list fully visible in the supermarket
 }
 function closeShoppingMode(){
   shoppingModeActive = false;
@@ -2750,6 +2873,26 @@ document.getElementById('smSearchInput').addEventListener('input', (e)=>{
   smSearchQuery = e.target.value;
   renderShoppingModeList();
 });
+const smHideBtn = document.getElementById('smHideCheckedBtn');
+if(smHideBtn){
+  smHideBtn.onclick = ()=>{
+    smHideChecked = !smHideChecked;
+    localStorage.setItem('sm_hide_checked', smHideChecked ? '1' : '0');
+    renderShoppingModeList();
+  };
+}
+const smClearBtn = document.getElementById('smClearBoughtBtn');
+if(smClearBtn){
+  smClearBtn.onclick = ()=>{
+    if(boughtItems.size === 0) return;
+    showConfirmModal(`להסיר מהרשימה ${boughtItems.size} פריטים שסומנו?`, ()=>{
+      clearBoughtInList(activeListId);
+      renderShoppingModeList();
+      renderShoppingPanel();
+      renderTabBadges();
+    });
+  };
+}
 
 function stopSpeaking(){
   if('speechSynthesis' in window) window.speechSynthesis.cancel();
@@ -2978,12 +3121,21 @@ document.getElementById('cookTimerFabBtn').onclick = ()=>{
   document.getElementById('cookTimerPanel').classList.toggle('open', cookState.timerPanelOpen);
 };
 
+function applySimpleMode(){
+  document.body.classList.toggle('simple-mode', simpleMode);
+  const toggle = document.getElementById('simpleModeToggle');
+  if(toggle) toggle.checked = simpleMode;
+  // If fridge tab was active and is now hidden, jump to shopping
+  if(simpleMode && activeTab === 'fridge') switchTab('shopping');
+}
+
 function renderAll(){
   renderFridgeStrip();
   renderItemGrid();
   renderFilterRow();
   renderRecipes();
   renderTopSuggestion();
+  renderTonightSuggestions();
   renderHeaderSub();
   renderDailyRecipe();
   renderShoppingPanel();
@@ -2997,12 +3149,14 @@ function renderAll(){
   renderRemovedItemsList();
   renderAutoResetSettings();
   renderLearnedList();
+  applySimpleMode();
   if(shoppingModeActive) renderShoppingModeList();
 }
 
 let activeTab = 'shopping'; // always open on the shopping list, regardless of which tab was last used
 
 function switchTab(name){
+  if(simpleMode && name === 'fridge') name = 'shopping';
   activeTab = name;
   localStorage.setItem('active_tab', name);
   document.querySelectorAll('.tab-content').forEach(el=>{
@@ -3693,6 +3847,64 @@ document.getElementById('manualAddRecipeBtn').onclick = ()=>{
   renderImportForm({title:'', ingredients:[], steps:[], time:''});
   document.getElementById('importForm').scrollIntoView({behavior:'smooth', block:'start'});
 };
+const importTextBtn = document.getElementById('importTextBtn');
+if(importTextBtn){
+  importTextBtn.onclick = ()=>{
+    showTextareaModal('הדביקו כאן את טקסט המתכון (מאתר, וואטסאפ או הערה):', (text)=>{
+      const status = document.getElementById('importStatus');
+      if(status) status.textContent = '';
+      const parsed = parseRecipeText(text, 'מתכון מיובא');
+      renderImportForm(parsed);
+      document.getElementById('importForm').scrollIntoView({behavior:'smooth', block:'start'});
+    });
+  };
+}
+const importUrlBtn = document.getElementById('importUrlBtn');
+if(importUrlBtn){
+  importUrlBtn.onclick = ()=>{
+    showPromptModal('הדביקו קישור למתכון:', async (url)=>{
+      const status = document.getElementById('importStatus');
+      if(status) status.textContent = 'טוענים את העמוד...';
+      try{
+        // Try direct fetch (works when the site allows CORS; many recipe sites don't)
+        let text = '';
+        try{
+          const res = await fetch(url, { mode:'cors' });
+          if(!res.ok) throw new Error('http '+res.status);
+          const html = await res.text();
+          // strip tags roughly for Hebrew recipe pages
+          text = html
+            .replace(/<script[\s\S]*?<\/script>/gi,' ')
+            .replace(/<style[\s\S]*?<\/style>/gi,' ')
+            .replace(/<[^>]+>/g,'\n')
+            .replace(/&nbsp;/g,' ')
+            .replace(/&amp;/g,'&')
+            .replace(/&quot;/g,'"')
+            .replace(/&#39;/g,"'")
+            .replace(/\n{3,}/g,'\n\n');
+        }catch(corsErr){
+          if(status) status.textContent = '';
+          showTextareaModal(
+            'לא ניתן לקרוא את האתר ישירות (הגבלת אבטחה של הדפדפן).\nפתחו את הקישור, העתיקו את המתכון, והדביקו כאן:',
+            (pasted)=>{
+              const parsed = parseRecipeText(pasted, 'מתכון מקישור');
+              renderImportForm(parsed);
+              document.getElementById('importForm').scrollIntoView({behavior:'smooth', block:'start'});
+            }
+          );
+          return;
+        }
+        if(status) status.textContent = '';
+        const parsed = parseRecipeText(text, 'מתכון מקישור');
+        renderImportForm(parsed);
+        document.getElementById('importForm').scrollIntoView({behavior:'smooth', block:'start'});
+      }catch(e){
+        if(status) status.textContent = '';
+        alert('טעינת הקישור נכשלה. נסו להעתיק את הטקסט מהאתר ולהדביק עם «הדביקו טקסט».');
+      }
+    }, 'https://');
+  };
+}
 document.getElementById('importFileInput').addEventListener('change', async (e)=>{
   const file = e.target.files[0];
   if(!file) return;
@@ -3713,6 +3925,24 @@ document.getElementById('importFileInput').addEventListener('change', async (e)=
   }
   e.target.value = '';
 });
+
+// Simple mode toggle
+const simpleModeToggle = document.getElementById('simpleModeToggle');
+if(simpleModeToggle){
+  simpleModeToggle.checked = simpleMode;
+  simpleModeToggle.onchange = ()=>{
+    simpleMode = !!simpleModeToggle.checked;
+    localStorage.setItem('simple_mode', simpleMode ? '1' : '0');
+    applySimpleMode();
+  };
+}
+const tonightRefreshBtn = document.getElementById('tonightRefreshBtn');
+if(tonightRefreshBtn){
+  tonightRefreshBtn.onclick = ()=>{
+    tonightOffset += 3;
+    renderTonightSuggestions();
+  };
+}
 
 // Camera + Voice for fridge add row
 const IMAGENET_TO_HEBREW = [

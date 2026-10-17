@@ -2076,3 +2076,91 @@
   .item-del{border:none; background:transparent; color:var(--ink-soft); opacity:.55; font-size:14px; font-weight:400; padding:0 11px 0 9px; align-self:stretch; border-radius:0;}
   .item-del:hover{background:transparent; opacity:1; color:var(--brick);}
   .item-btn-wrap:has(.item-btn.selected) .item-del{color:var(--on-herb,#fff); opacity:.7;}
+
+/* —— Simple mode: hide fridge tab —— */
+body.simple-mode #tabBtnFridge{ display:none !important; }
+body.simple-mode #weekPlanSection{ display:none !important; }
+body.simple-mode #dailyRecipeSection{ display:none !important; }
+
+/* —— Tonight suggestions —— */
+.tonight-grid{ display:flex; flex-direction:column; gap:10px; margin-top:8px; }
+.tonight-card{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:14px 16px;
+  box-shadow:var(--shadow-hair);
+  cursor:pointer;
+}
+.tonight-card:active{ transform:scale(.99); }
+.tonight-card .tc-meta{ font-size:12.5px; color:var(--ink-soft); margin-top:4px; }
+.tonight-card .tc-title{ font-family:'Frank Ruhl Libre',serif; font-size:18px; font-weight:700; margin:0; }
+.tonight-card .tc-tags{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.tonight-tag{
+  font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:100px;
+  background:var(--herb-soft); color:var(--herb);
+}
+.tonight-tag.miss{ background:var(--mustard-soft); color:var(--mustard); }
+.tonight-tag.fav{ background:#FFF3D6; color:#9A6B00; }
+.tonight-empty{ font-size:14px; color:var(--ink-soft); padding:8px 0; }
+
+/* —— Frequent items on shopping list —— */
+.shop-freq-section{ margin-top:14px; }
+.shop-freq-title{ font-size:12.5px; font-weight:700; color:var(--ink-soft); margin-bottom:8px; }
+.shop-freq-grid{ display:flex; flex-wrap:wrap; gap:8px; }
+.shop-freq-chip{
+  border:1px solid var(--line);
+  background:var(--herb-soft);
+  color:var(--herb);
+  padding:8px 14px;
+  border-radius:100px;
+  font-size:13.5px;
+  font-weight:600;
+  cursor:pointer;
+  font-family:'Assistant',sans-serif;
+}
+.shop-freq-chip:active{ opacity:.85; }
+
+/* —— Shopping mode extras —— */
+.sm-progress{
+  padding:8px 16px 0;
+  font-size:13px;
+  font-weight:700;
+  color:var(--ink-soft);
+}
+.sm-progress-bar{
+  height:6px;
+  background:var(--line);
+  border-radius:100px;
+  margin-top:6px;
+  overflow:hidden;
+}
+.sm-progress-bar > i{
+  display:block;
+  height:100%;
+  background:var(--herb);
+  border-radius:100px;
+  transition:width .2s ease;
+}
+.sm-toolbar{
+  display:flex;
+  gap:8px;
+  padding:8px 16px 4px;
+}
+.sm-tool-btn{
+  flex:1;
+  border:1px solid var(--line);
+  background:var(--surface);
+  color:var(--ink);
+  padding:10px 12px;
+  border-radius:12px;
+  font-size:13px;
+  font-weight:700;
+  cursor:pointer;
+  font-family:'Assistant',sans-serif;
+}
+.sm-tool-btn.active{
+  background:var(--herb);
+  border-color:var(--herb);
+  color:#fff;
+}
