@@ -1,0 +1,2037 @@
+:root{
+    --paper:#F6F3EA;
+    --ink:#2B2A26;
+    --ink-soft:#6B675E;
+    --line:#E4DFD0;
+    --surface:#FFFFFF;
+    --brick:#C1442E;
+    --brick-soft:#F3DCD6;
+    --herb:#5B7553;
+    --on-herb:#FFFFFF;
+    --herb-soft:#E3EADD;
+    --mustard:#B8842A;
+    --mustard-soft:#F3E6CA;
+    --star:#D4A017;
+  }
+  body.dark{
+    --paper:#1A1916;
+    --ink:#F0EDE4;
+    --ink-soft:#A8A49A;
+    --line:#3A3832;
+    --surface:#252320;
+    --brick:#E06B55;
+    --brick-soft:#4A2E28;
+    --herb:#8FB085;
+    --on-herb:#1C2119;
+    --herb-soft:#2E3A2C;
+    --mustard:#D4A84A;
+    --mustard-soft:#3D3420;
+    --star:#F0C14B;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;width:100%;overflow-x:hidden;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Assistant',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    transition: background .25s, color .25s;
+  }
+  .wrap{
+    max-width:640px;
+    width:100%;
+    margin:0 auto;
+    padding:0 14px 100px;
+  }
+  header.top{
+    position:sticky;
+    top:0;
+    background:var(--paper);
+    z-index:10;
+    padding:18px 0 12px;
+    border-bottom:1px solid var(--line);
+  }
+  .header-brand{display:flex; align-items:center; gap:12px; min-width:0;}
+  .app-logo{
+    flex-shrink:0;
+    width:46px; height:46px;
+    border-radius:14px;
+    background:var(--brick);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .header-row{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:12px;
+  }
+  header.top h1{
+    font-family:'Frank Ruhl Libre',serif;
+    font-weight:900;
+    font-size:26px;
+    margin:0 0 4px;
+    letter-spacing:.2px;
+  }
+  header.top p{
+    margin:0;
+    color:var(--ink-soft);
+    font-size:13.5px;
+  }
+  .theme-btn{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:50%;
+    width:40px;
+    height:40px;
+    font-size:18px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-shrink:0;
+  }
+  .fridge-summary{
+    margin-top:12px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:10px;
+  }
+  .fridge-count{
+    font-size:14px;
+    color:var(--ink-soft);
+  }
+  .fridge-count b{color:var(--ink); font-weight:700;}
+  .fridge-actions{
+    display:flex;
+    flex-wrap:wrap;
+    gap:14px;
+  }
+  .fridge-actions button{
+    background:none;
+    border:none;
+    padding:0;
+    font-size:13.5px;
+    font-weight:600;
+    color:var(--herb);
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .fridge-actions button.clear-btn{color:var(--brick);}
+  .fridge-empty{
+    color:var(--ink-soft);
+    font-size:14px;
+    padding:6px 0;
+    margin-top:12px;
+  }
+  .fridge-panel{
+    max-height:0;
+    overflow:hidden;
+    transition:max-height .25s ease;
+  }
+  .fridge-panel.open{
+    max-height:160px;
+    overflow-y:auto;
+    margin-top:10px;
+  }
+  .fridge-panel-inner{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    padding-bottom:4px;
+  }
+  .clearcat-panel{
+    display:none;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:14px;
+    margin-top:10px;
+  }
+  .clearcat-panel.open{display:block;}
+  .clearcat-grid{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px 16px;
+    margin-bottom:14px;
+  }
+  .clearcat-item{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-size:13.5px;
+    cursor:pointer;
+  }
+  #clearCatGoBtn{
+    border:none;
+    background:var(--brick);
+    color:#fff;
+    padding:9px 16px;
+    border-radius:10px;
+    font-size:13.5px;
+    font-weight:700;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .chip{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    background:var(--herb-soft);
+    color:var(--herb);
+    border:1px solid transparent;
+    border-radius:100px;
+    padding:6px 8px 6px 14px;
+    font-size:14px;
+    font-weight:600;
+  }
+  .chip.exp-soon{background:var(--mustard-soft); color:var(--mustard);}
+  .chip.exp-expired{background:var(--brick-soft); color:var(--brick);}
+  .chip-cal{
+    background:none;
+    border:none;
+    font-size:14px;
+    cursor:pointer;
+    padding:0;
+    opacity:.75;
+  }
+  .chip-cal:hover{opacity:1;}
+  .expiry-alert{
+    background:var(--mustard-soft);
+    color:var(--mustard);
+    border-radius:12px;
+    padding:10px 14px;
+    font-size:13px;
+    line-height:1.6;
+    margin-bottom:12px;
+  }
+  .expiry-alert.has-expired{background:var(--brick-soft); color:var(--brick);}
+  .chip button{
+    background:none;
+    border:none;
+    color:var(--herb);
+    font-size:16px;
+    line-height:1;
+    cursor:pointer;
+    padding:2px 4px;
+    opacity:.7;
+  }
+  .chip button:hover{opacity:1;}
+
+  section{margin-top:24px;}
+  section > h2{
+    font-family:'Frank Ruhl Libre',serif;
+    font-weight:700;
+    font-size:18px;
+    margin:0 0 12px;
+  }
+
+  .add-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom:14px;
+  }
+  .add-row input{
+    flex:1 1 140px;
+    min-width:0;
+    border:1px solid var(--line);
+    background:var(--surface);
+    border-radius:12px;
+    padding:12px 14px;
+    font-size:15px;
+    font-family:'Assistant',sans-serif;
+    color:var(--ink);
+  }
+  .add-row input:focus{outline:2px solid var(--brick); outline-offset:1px;}
+  .add-row button{
+    border:none;
+    background:var(--brick);
+    color:#fff;
+    border-radius:12px;
+    padding:0 18px;
+    font-size:15px;
+    font-weight:600;
+    font-family:'Assistant',sans-serif;
+    cursor:pointer;
+  }
+  .add-row button:active{transform:scale(.97);}
+
+  .cat-tabs{
+    display:flex;
+    gap:8px;
+    overflow-x:auto;
+    padding:2px 2px 8px;
+    margin-bottom:10px;
+    scrollbar-width:none;
+  }
+  .cat-tabs::-webkit-scrollbar{display:none;}
+  .cat-tab{
+    flex:none;
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink);
+    padding:9px 18px;
+    border-radius:100px;
+    font-size:14.5px;
+    font-weight:700;
+    cursor:pointer;
+    white-space:nowrap;
+    font-family:'Frank Ruhl Libre',serif;
+  }
+  .cat-tab.active{
+    background:var(--herb);
+    border-color:var(--herb);
+    color:var(--on-herb, #fff);
+  }
+
+  .cat-add-row{
+    display:flex;
+    gap:8px;
+    width:100%;
+    margin-bottom:10px;
+  }
+  .cat-add-row input{
+    flex:1;
+    border:1px solid var(--line);
+    background:var(--paper);
+    border-radius:100px;
+    padding:8px 14px;
+    font-size:13.5px;
+    font-family:'Assistant',sans-serif;
+    color:var(--ink);
+  }
+  .cat-add-row button{
+    border:none;
+    background:var(--herb);
+    color:#fff;
+    border-radius:100px;
+    width:36px;
+    font-size:18px;
+    font-weight:700;
+    cursor:pointer;
+  }
+
+  .item-grid{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:14px;
+  }
+  .item-btn-wrap{
+    display:inline-flex;
+    align-items:stretch;
+    border-radius:100px;
+    overflow:hidden;
+  }
+  .item-btn{
+    border:1px solid var(--line);
+    background:var(--paper);
+    color:var(--ink);
+    padding:7px 13px;
+    border-radius:100px;
+    font-size:13.5px;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .item-btn-wrap .item-btn{border-radius:100px 0 0 100px;}
+  .item-btn[data-icon]::before{
+    content:attr(data-icon);
+    margin-inline-end:7px;
+    font-size:15px;
+  }
+  .item-btn.selected{
+    background:var(--herb);
+    border-color:var(--herb);
+    color:#fff;
+    font-weight:600;
+  }
+  .item-del{
+    border:1px solid var(--line);
+    border-right:none;
+    background:var(--paper);
+    color:var(--brick);
+    font-size:13px;
+    font-weight:700;
+    padding:0 9px;
+    border-radius:0 100px 100px 0;
+    cursor:pointer;
+  }
+  .item-del:hover{background:var(--brick-soft);}
+
+  .empty-state{
+    font-family:'Frank Ruhl Libre',serif;
+    font-size:18px;
+    line-height:1.6;
+    color:var(--ink-soft);
+    padding:28px 6px;
+    border-top:1px solid var(--line);
+  }
+
+  .daily-card{
+    background:var(--mustard-soft);
+    border:1px solid transparent;
+    border-radius:16px;
+    padding:16px 18px;
+    cursor:pointer;
+  }
+  .daily-label{
+    font-size:12.5px;
+    font-weight:700;
+    color:var(--mustard);
+    margin-bottom:4px;
+  }
+  .daily-card h3{
+    font-family:'Frank Ruhl Libre',serif;
+    font-weight:700;
+    font-size:19px;
+    margin:0 0 4px;
+  }
+  .daily-card .recipe-meta{margin-top:0;}
+  .daily-card .recipe-body{border-top-color:rgba(184,132,42,.25);}
+
+  .filters-wrap{margin-bottom:16px;}
+  .search-row{margin-bottom:10px;}
+  .search-row input{
+    width:100%;
+    border:1px solid var(--line);
+    background:var(--surface);
+    border-radius:12px;
+    padding:11px 14px;
+    font-size:14.5px;
+    font-family:'Assistant',sans-serif;
+    color:var(--ink);
+  }
+  .search-row input:focus{outline:2px solid var(--brick); outline-offset:1px;}
+  .filter-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+  }
+  .filter-chip{
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink-soft);
+    padding:7px 13px;
+    border-radius:100px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+    white-space:nowrap;
+  }
+  .filter-chip.active{
+    background:var(--herb);
+    border-color:var(--herb);
+    color:#fff;
+  }
+  .time-select, .cuisine-select, .diff-select{
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink-soft);
+    padding:7px 10px;
+    border-radius:100px;
+    font-size:13px;
+    font-weight:600;
+    font-family:'Assistant',sans-serif;
+    cursor:pointer;
+  }
+
+  .card-actions{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:14px;
+    padding-top:14px;
+    border-top:1px solid var(--line);
+  }
+  .action-btn{
+    border:1px solid var(--line);
+    background:var(--paper);
+    color:var(--ink);
+    padding:8px 12px;
+    border-radius:10px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .action-btn.cooked{
+    background:var(--herb-soft);
+    border-color:transparent;
+    color:var(--herb);
+  }
+  .action-btn.fav-active{
+    background:var(--mustard-soft);
+    border-color:transparent;
+    color:var(--mustard);
+  }
+  .action-btn.cook-mode-btn{
+    background:var(--brick);
+    color:#fff;
+    border-color:var(--brick);
+  }
+  .cooked-badge{color:var(--herb); font-weight:700;}
+  .expiring-badge{color:var(--mustard); font-weight:700;}
+  .fav-star{
+    color:var(--star);
+    font-size:18px;
+    cursor:pointer;
+    background:none;
+    border:none;
+    padding:0 4px;
+    line-height:1;
+  }
+
+  .shopping-panel{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:0;
+    overflow:hidden;
+  }
+  .shopping-empty{
+    color:var(--ink-soft);
+    font-size:14px;
+    padding:18px;
+  }
+  .shop-toolbar{
+    display:flex;
+    gap:8px;
+    padding:12px 14px;
+    border-bottom:1px solid var(--line);
+    flex-wrap:wrap;
+    align-items:center;
+  }
+  .shop-toolbar input{
+    flex:1;
+    min-width:120px;
+    border:1px solid var(--line);
+    background:var(--paper);
+    border-radius:10px;
+    padding:10px 12px;
+    font-size:14px;
+    font-family:'Assistant',sans-serif;
+    color:var(--ink);
+  }
+  .shop-toolbar input.shop-qty-input{
+    flex:0 1 110px;
+    min-width:90px;
+  }
+  .shop-toolbar button{
+    border:none;
+    background:var(--brick);
+    color:#fff;
+    padding:10px 14px;
+    border-radius:10px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+    white-space:nowrap;
+  }
+  .shop-toolbar button.icon-btn{
+    background:var(--paper);
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:8px 10px;
+    font-size:16px;
+  }
+  .shop-group{
+    border-bottom:1px solid var(--line);
+  }
+  .shop-group:last-of-type{border-bottom:none;}
+  .shop-group-title{
+    font-size:12px;
+    font-weight:700;
+    color:var(--ink-soft);
+    padding:10px 16px 6px;
+    background:var(--paper);
+  }
+  .shop-item{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:12px 16px;
+    border-bottom:1px solid var(--line);
+    cursor:pointer;
+    transition:background .15s;
+  }
+  .shop-item:last-child{border-bottom:none;}
+  .shop-item:active{background:var(--paper);}
+  .shop-item.bought .shop-item-name{
+    text-decoration:line-through;
+    color:var(--ink-soft);
+    opacity:.6;
+  }
+  .shop-check{
+    width:22px;
+    height:22px;
+    border-radius:50%;
+    border:2px solid var(--line);
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:12px;
+    color:transparent;
+    transition:all .15s;
+  }
+  .shop-item.bought .shop-check{
+    background:var(--herb);
+    border-color:var(--herb);
+    color:#fff;
+  }
+  .shop-item-icon{
+    width:36px;
+    height:36px;
+    border-radius:50%;
+    background:var(--paper);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:18px;
+    flex-shrink:0;
+  }
+  .shop-item-name{
+    flex:1;
+    font-size:15px;
+    font-weight:500;
+  }
+  .shop-item-qty{
+    font-size:12.5px;
+    font-weight:400;
+    color:var(--ink-soft);
+  }
+  .shop-item-del{
+    background:none;
+    border:none;
+    color:var(--ink-soft);
+    font-size:18px;
+    padding:4px 6px;
+    cursor:pointer;
+    opacity:.5;
+  }
+  .shop-item-del:hover{opacity:1; color:var(--brick);}
+  .shop-item-qty-btn{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--ink-soft);
+    font-size:11.5px;
+    font-weight:600;
+    padding:3px 8px;
+    border-radius:100px;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .shop-item-qty-btn:hover{color:var(--herb); border-color:var(--herb);}
+  .shop-footer{
+    padding:10px 14px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    border-top:1px solid var(--line);
+    background:var(--paper);
+  }
+  .shop-footer button{
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink);
+    padding:8px 12px;
+    border-radius:10px;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .shop-footer button.primary{
+    background:var(--ink);
+    color:var(--paper);
+    border-color:var(--ink);
+  }
+  .shop-checked-toggle{
+    width:100%;
+    text-align:center;
+    padding:10px;
+    font-size:13px;
+    color:var(--ink-soft);
+    background:none;
+    border:none;
+    border-top:1px solid var(--line);
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+    font-weight:600;
+  }
+  .sub-hint{
+    font-size:12.5px;
+    color:var(--mustard);
+    margin-top:4px;
+  }
+  .history-line{
+    font-size:12.5px;
+    color:var(--ink-soft);
+    margin-top:4px;
+  }
+  .alt-btn{
+    margin-top:8px;
+    font-size:13px;
+  }
+
+  .recipe-card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:16px 18px;
+    margin-bottom:12px;
+    cursor:pointer;
+  }
+  .recipe-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    gap:12px;
+  }
+  .recipe-head h3{
+    font-family:'Frank Ruhl Libre',serif;
+    font-weight:700;
+    font-size:18px;
+    margin:0;
+  }
+  .match-frac{
+    font-size:14px;
+    font-weight:700;
+    white-space:nowrap;
+  }
+  .match-full{color:var(--herb);}
+  .match-partial{color:var(--mustard);}
+  .recipe-meta{
+    color:var(--ink-soft);
+    font-size:13px;
+    margin-top:4px;
+  }
+  .recipe-tags{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-top:8px;
+  }
+  .tag{
+    font-size:11.5px;
+    padding:3px 9px;
+    border-radius:100px;
+    background:var(--paper);
+    border:1px solid var(--line);
+    color:var(--ink-soft);
+  }
+  .missing-line{
+    margin-top:10px;
+    font-size:13.5px;
+    color:var(--brick);
+  }
+  .recipe-body{
+    display:none;
+    margin-top:14px;
+    padding-top:14px;
+    border-top:1px solid var(--line);
+  }
+  .recipe-card.open .recipe-body{display:block;}
+  .recipe-body h4{
+    font-size:13px;
+    margin:0 0 6px;
+    color:var(--ink-soft);
+    font-weight:600;
+  }
+  .ing-list{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-bottom:14px;
+  }
+  .ing-pill{
+    font-size:12.5px;
+    padding:4px 10px;
+    border-radius:100px;
+    background:var(--paper);
+    border:1px solid var(--line);
+  }
+  .ing-pill.have{background:var(--herb-soft); color:var(--herb); border-color:transparent;}
+  .ing-pill.miss{background:var(--brick-soft); color:var(--brick); border-color:transparent;}
+  .ing-qty{opacity:.7; font-weight:400;}
+  .steps{
+    margin:0;
+    padding-inline-start:20px;
+    font-size:14.5px;
+    line-height:1.75;
+  }
+  .steps li{margin-bottom:4px;}
+
+  /* Cooking mode overlay */
+  .shopping-mode-overlay{
+    position:fixed;
+    inset:0;
+    background:var(--paper);
+    z-index:100;
+    display:none;
+    flex-direction:column;
+    padding:20px 18px 30px;
+    overflow-y:auto;
+  }
+  .shopping-mode-overlay.active{display:flex;}
+  .sm-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:18px;
+  }
+  .sm-title{
+    font-family:'Frank Ruhl Libre',serif;
+    font-weight:900;
+    font-size:24px;
+  }
+  .sm-close{
+    background:none;
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:8px 14px;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    color:var(--ink);
+    font-family:'Assistant',sans-serif;
+  }
+  .sm-group-title{
+    font-family:'Frank Ruhl Libre',serif;
+    font-weight:700;
+    font-size:15px;
+    color:var(--herb);
+    margin:20px 0 4px;
+  }
+  .sm-group-title:first-child{margin-top:0;}
+  .sm-icon{font-size:22px; flex-shrink:0;}
+  .sm-row{
+    display:flex;
+    align-items:center;
+    gap:16px;
+    padding:18px 4px;
+    border-bottom:1px solid var(--line);
+    cursor:pointer;
+  }
+  .sm-row:last-child{border-bottom:none;}
+  .sm-check{
+    width:30px;
+    height:30px;
+    border-radius:9px;
+    border:2px solid var(--line);
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:18px;
+    color:#fff;
+  }
+  .sm-row.bought .sm-check{background:var(--herb); border-color:var(--herb);}
+  .sm-row.bought .sm-name{text-decoration:line-through; opacity:.45;}
+  .sm-name{font-size:22px; line-height:1.3;}
+  .sm-empty{
+    text-align:center;
+    color:var(--ink-soft);
+    font-size:16px;
+    padding:40px 0;
+  }
+
+  .cook-overlay{
+    position:fixed;
+    inset:0;
+    background:var(--paper);
+    z-index:100;
+    display:none;
+    flex-direction:column;
+    padding:20px 18px 90px;
+    overflow-y:auto;
+  }
+  .cook-overlay.active{display:flex;}
+  .cook-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:18px;
+  }
+  .cook-header h2{
+    font-family:'Frank Ruhl Libre',serif;
+    font-size:22px;
+    margin:0;
+  }
+  .cook-close{
+    background:none;
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:8px 14px;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    color:var(--ink);
+    font-family:'Assistant',sans-serif;
+  }
+  .cook-progress{
+    height:6px;
+    background:var(--line);
+    border-radius:3px;
+    margin-bottom:20px;
+    overflow:hidden;
+  }
+  .cook-progress-bar{
+    height:100%;
+    background:var(--herb);
+    transition:width .3s;
+  }
+  .cook-step-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:8px;
+  }
+  .cook-step-num{
+    font-size:14px;
+    font-weight:700;
+    color:var(--herb);
+  }
+  .cook-speak-btn{
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink);
+    padding:6px 12px;
+    border-radius:100px;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .cook-speak-btn.speaking{
+    background:var(--herb);
+    border-color:var(--herb);
+    color:#fff;
+  }
+  .cook-step-text{
+    font-family:'Frank Ruhl Libre',serif;
+    font-size:34px;
+    line-height:1.5;
+    margin-bottom:24px;
+  }
+  .cook-ing-list{
+    font-family:'Assistant',sans-serif;
+  }
+  .cook-ing-row{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding:16px 2px;
+    border-bottom:1px solid var(--line);
+    cursor:pointer;
+  }
+  .cook-ing-row:last-child{border-bottom:none;}
+  .cook-ing-row.used .cook-ing-text{
+    text-decoration:line-through;
+    opacity:.45;
+  }
+  .cook-ing-check{
+    width:24px;
+    height:24px;
+    border-radius:7px;
+    border:2px solid var(--line);
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:15px;
+    color:#fff;
+  }
+  .cook-ing-row.used .cook-ing-check{
+    background:var(--herb);
+    border-color:var(--herb);
+  }
+  .cook-ing-dot{
+    width:10px;
+    height:10px;
+    border-radius:50%;
+    flex-shrink:0;
+  }
+  .cook-ing-dot.have{background:var(--herb);}
+  .cook-ing-dot.miss{background:var(--brick);}
+  .cook-ing-text{
+    font-size:23px;
+    line-height:1.4;
+  }
+  .cook-timer-box{display:none;} /* replaced by floating compact timer */
+  .cook-timer-display{
+    font-size:19px;
+    font-weight:700;
+    font-variant-numeric:tabular-nums;
+    margin:2px 0;
+  }
+  .cook-timer-btns{
+    display:flex;
+    gap:6px;
+    justify-content:center;
+    flex-wrap:wrap;
+  }
+  .cook-timer-btns button{
+    border:1px solid var(--line);
+    background:var(--paper);
+    color:var(--ink);
+    padding:5px 10px;
+    border-radius:8px;
+    font-size:11.5px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  /* Compact floating timer */
+  .cook-timer-fab{
+    position:fixed;
+    bottom:calc(24px + env(safe-area-inset-bottom,0px));
+    left:18px;
+    z-index:110;
+    display:none;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:8px;
+  }
+  .cook-overlay.active .cook-timer-fab{display:flex;}
+  .cook-timer-fab-btn{
+    width:52px; height:52px;
+    border-radius:50%;
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink);
+    font-size:22px;
+    cursor:pointer;
+    box-shadow:var(--shadow-soft);
+    display:flex; align-items:center; justify-content:center;
+    position:relative;
+  }
+  .cook-timer-fab-btn.running{
+    background:var(--herb);
+    border-color:var(--herb);
+    color:#fff;
+  }
+  .cook-timer-fab-btn .fab-count{
+    position:absolute;
+    inset:0;
+    display:flex; align-items:center; justify-content:center;
+    font-size:12.5px;
+    font-weight:800;
+    font-variant-numeric:tabular-nums;
+    font-family:'Assistant',sans-serif;
+  }
+  .cook-timer-panel{
+    display:none;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:12px 14px;
+    box-shadow:var(--shadow-soft);
+    min-width:210px;
+  }
+  .cook-timer-panel.open{display:block;}
+  .cook-timer-panel .cook-timer-display{font-size:28px; margin:4px 0 10px; text-align:center;}
+  .cook-view-toggle{
+    display:flex;
+    gap:6px;
+    margin-bottom:12px;
+  }
+  .cook-view-toggle button{
+    flex:1;
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink-soft);
+    padding:8px 10px;
+    border-radius:100px;
+    font-size:12.5px;
+    font-weight:700;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .cook-view-toggle button.active{
+    background:var(--herb);
+    border-color:var(--herb);
+    color:var(--on-herb,#fff);
+  }
+  .cook-list-mode .cook-progress,
+  .cook-list-mode .cook-nav{display:none;}
+  .cook-list-mode .cook-step-text{font-size:18px; line-height:1.65;}
+  .cook-list-steps{margin:0; padding-inline-start:22px; font-size:18px; line-height:1.7;}
+  .cook-list-steps li{margin-bottom:10px;}
+  .cook-list-ing-title, .cook-list-steps-title{
+    font-size:13px; font-weight:700; color:var(--ink-soft); margin:16px 0 8px;
+  }
+  .sm-search-wrap{padding:0 0 12px;}
+  .sm-search-wrap input{
+    width:100%;
+    border:1px solid var(--line);
+    background:var(--surface);
+    border-radius:100px;
+    padding:12px 16px;
+    font-size:16px;
+    font-family:'Assistant',sans-serif;
+    color:var(--ink);
+  }
+  .sm-search-wrap input:focus{outline:2px solid var(--brick); outline-offset:1px;}
+  .cook-nav{
+    display:flex;
+    gap:12px;
+    margin-top:auto;
+    padding-top:20px;
+  }
+  .cook-nav button{
+    flex:1;
+    border:none;
+    padding:14px;
+    border-radius:12px;
+    font-size:16px;
+    font-weight:700;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .cook-nav .prev{
+    background:var(--surface);
+    border:1px solid var(--line);
+    color:var(--ink);
+  }
+  .cook-nav .next{
+    background:var(--herb);
+    color:#fff;
+  }
+  .cook-nav .done{
+    background:var(--brick);
+    color:#fff;
+  }
+
+  footer.hint{
+    text-align:center;
+    color:var(--ink-soft);
+    font-size:12.5px;
+    margin-top:36px;
+  }
+
+  .tab-content{display:none;}
+  .tab-content.active{display:block;}
+
+  .tab-bar{
+    position:fixed;
+    bottom:0;
+    left:0;
+    right:0;
+    display:flex;
+    background:var(--surface);
+    border-top:1px solid var(--line);
+    padding:6px 8px calc(6px + env(safe-area-inset-bottom));
+    z-index:20;
+  }
+  .tab-btn{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:2px;
+    background:none;
+    border:none;
+    padding:8px 4px 6px;
+    color:var(--ink-soft);
+    font-family:'Assistant',sans-serif;
+    font-size:12px;
+    font-weight:600;
+    cursor:pointer;
+    position:relative;
+  }
+  .tab-btn .tab-icon{font-size:20px; line-height:1;}
+  .tab-btn.active{color:var(--brick);}
+  .tab-badge{
+    position:absolute;
+    top:2px;
+    left:calc(50% - 2px);
+    background:var(--brick);
+    color:#fff;
+    font-size:10px;
+    font-weight:700;
+    border-radius:100px;
+    min-width:16px;
+    height:16px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0 3px;
+  }
+
+  .list-switcher{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom:14px;
+  }
+  .list-chip-wrap{
+    display:inline-flex;
+    align-items:stretch;
+    border-radius:100px;
+    overflow:hidden;
+  }
+  .list-chip-wrap .list-chip{
+    border-radius:100px 0 0 100px;
+  }
+  .list-chip{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink-soft);
+    padding:8px 14px;
+    border-radius:100px;
+    font-size:13.5px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .list-chip.active{
+    background:var(--ink);
+    border-color:var(--ink);
+    color:var(--paper);
+  }
+  .list-chip-add{
+    background:none;
+    border:1px dashed var(--line);
+    color:var(--ink-soft);
+  }
+  .list-chip-x{
+    border:1px solid var(--line);
+    border-right:none;
+    background:var(--surface);
+    color:var(--brick);
+    font-size:14px;
+    font-weight:700;
+    padding:8px 10px;
+    border-radius:0 100px 100px 0;
+    cursor:pointer;
+  }
+  .list-chip-x:hover{background:var(--brick-soft);}
+
+  .sync-box{
+    background:var(--herb-soft);
+    border-radius:12px;
+    padding:12px 14px;
+    margin-bottom:14px;
+  }
+  .acct-input{
+    width:100%;
+    margin-bottom:8px;
+    padding:9px 12px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    font-family:'Assistant',sans-serif;
+    font-size:14px;
+    background:var(--surface);
+    color:var(--ink);
+  }
+  .acct-btn-row{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .acct-picker{margin-top:14px;}
+  .sync-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .sync-status{
+    font-size:13px;
+    font-weight:600;
+    color:var(--herb);
+  }
+  .sync-actions{display:flex; gap:8px;}
+  .sync-actions button{
+    border:none;
+    background:var(--surface);
+    color:var(--ink);
+    padding:6px 10px;
+    border-radius:8px;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .sync-setup{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:10px;
+  }
+  .sync-setup button{
+    border:none;
+    background:var(--ink);
+    color:var(--paper);
+    padding:8px 12px;
+    border-radius:8px;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .sync-setup input{
+    flex:1;
+    min-width:120px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:6px 10px;
+    font-size:13px;
+    font-family:'Assistant',sans-serif;
+  }
+  .cam-status{
+    font-size:12.5px;
+    color:var(--ink-soft);
+    margin-top:6px;
+    min-height:16px;
+  }
+  .autocomplete-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-top:8px;
+  }
+  .autocomplete-row:empty{
+    margin-top:0;
+  }
+  .ac-chip{
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink);
+    padding:5px 12px;
+    border-radius:100px;
+    font-size:13px;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .week-shop-overlay{
+    position:fixed; inset:0; z-index:300;
+    background:rgba(0,0,0,.45);
+    display:flex; align-items:flex-end; justify-content:center;
+  }
+  .week-shop-box{
+    background:var(--surface);
+    width:100%; max-width:560px; max-height:88vh;
+    border-radius:18px 18px 0 0;
+    display:flex; flex-direction:column;
+    overflow:hidden;
+  }
+  .wsp-head{padding:16px 18px 8px;}
+  .wsp-head h3{margin:0; font-family:'Frank Ruhl Libre',serif; font-size:20px;}
+  .wsp-sub{font-size:12.5px; color:var(--ink-soft); margin-top:4px;}
+  .wsp-body{padding:4px 18px 8px; overflow-y:auto; flex:1;}
+  .wsp-group-title{font-weight:700; font-size:13px; margin:12px 0 4px; color:var(--ink);}
+  .wsp-row{display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); cursor:pointer;}
+  .wsp-row input{width:20px; height:20px; flex-shrink:0; accent-color:var(--herb);}
+  .wsp-icon{font-size:20px; flex-shrink:0;}
+  .wsp-main{display:flex; flex-direction:column; min-width:0;}
+  .wsp-name{font-size:14.5px; font-weight:600;}
+  .wsp-qty{font-size:12px; font-weight:400; color:var(--ink-soft);}
+  .wsp-recipes{font-size:11.5px; color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .wsp-note{font-size:11.5px; font-weight:400; color:var(--ink-soft);}
+  .wsp-inlist{opacity:.6;}
+  .wsp-foot{display:flex; gap:8px; padding:12px 18px calc(12px + env(safe-area-inset-bottom,0px)); border-top:1px solid var(--line);}
+  .wsp-add{flex:1; border:none; background:var(--brick); color:#fff; padding:12px; border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; font-family:'Assistant',sans-serif;}
+  .wsp-add:disabled{opacity:.4; cursor:default;}
+  .wsp-sec{border:1px solid var(--line); background:none; color:var(--ink); padding:12px 14px; border-radius:12px; font-size:13.5px; cursor:pointer; font-family:'Assistant',sans-serif;}
+  .household-card{
+    background:var(--herb-soft);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:14px;
+    margin:12px 0;
+  }
+  .household-title{font-family:'Frank Ruhl Libre',serif; font-weight:700; font-size:17px;}
+  .household-members{margin-top:8px;}
+  .household-member{display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px;}
+  .household-member:last-child{border-bottom:none;}
+  .household-member > span:first-child{flex:1; word-break:break-all;}
+  .household-role{font-size:11.5px; color:var(--herb); font-weight:700;}
+  .added-toast{
+    position:fixed;
+    top:calc(12px + env(safe-area-inset-top,0px));
+    left:50%;
+    transform:translate(-50%,-140%);
+    z-index:400;
+    max-width:min(92vw,460px);
+    background:var(--ink);
+    color:var(--paper);
+    padding:12px 16px;
+    border-radius:14px;
+    font-size:14px;
+    font-weight:600;
+    white-space:pre-line;
+    box-shadow:0 6px 24px rgba(0,0,0,.25);
+    transition:transform .25s ease;
+    cursor:pointer;
+  }
+  .added-toast.show{transform:translate(-50%,0);}
+  .shop-check{
+    width:30px; height:30px;
+    border-radius:50%;
+    border:2px solid var(--line);
+    background:transparent;
+    padding:0;
+    flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    font-size:14px; font-weight:700;
+    color:transparent;
+    cursor:pointer;
+    transition:all .15s;
+  }
+  .shop-item.bought .shop-check{background:var(--herb); border-color:var(--herb); color:#fff;}
+  .shop-item-icon{border:none; padding:0; cursor:pointer;}
+  .shop-item-icon:active{transform:scale(.92);}
+  .shop-item-name{min-width:0;}
+  .shop-item-note{font-size:12px; font-weight:400; color:var(--ink-soft); margin-top:2px; white-space:pre-wrap;}
+  .shop-item-more{color:var(--ink-soft); opacity:.5; font-size:20px; flex-shrink:0;}
+
+  .lists-strip{display:flex; align-items:stretch; gap:8px; margin-bottom:14px;}
+  .lists-all-btn{
+    flex-shrink:0; width:64px;
+    border:1px solid var(--line); background:var(--surface); color:var(--ink);
+    border-radius:16px; cursor:pointer; font-family:'Assistant',sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+  }
+  .lists-all-btn span{font-size:20px; line-height:1;}
+  .lists-all-btn small{font-size:10.5px; font-weight:700; color:var(--ink-soft);}
+  .lists-scroller{display:flex; gap:8px; overflow-x:auto; flex:1; padding-bottom:4px; scrollbar-width:none;}
+  .lists-scroller::-webkit-scrollbar{display:none;}
+  .list-card{
+    flex:none; min-width:132px; max-width:200px;
+    display:flex; flex-direction:column; align-items:flex-start; gap:6px;
+    padding:12px 14px;
+    border:1px solid var(--line); background:var(--surface); color:var(--ink);
+    border-radius:16px; cursor:pointer; text-align:right;
+    font-family:'Assistant',sans-serif;
+  }
+  .list-card-name{font-size:15px; font-weight:800; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .list-card-count{font-size:12px; font-weight:600; color:var(--ink-soft);}
+  .list-card-bar{display:block; width:100%; height:6px; border-radius:100px; background:var(--line); overflow:hidden;}
+  .list-card-bar i{display:block; height:100%; background:var(--herb); border-radius:100px;}
+  .list-card.active{background:var(--ink); border-color:var(--ink); color:var(--paper);}
+  .list-card.active .list-card-count{color:var(--paper); opacity:.8;}
+  .list-card.active .list-card-bar{background:rgba(255,255,255,.25);}
+  .list-card-add{align-items:center; justify-content:center; background:none; border:1px dashed var(--line); color:var(--ink-soft); font-weight:700; font-size:13.5px; min-width:110px;}
+  .list-card-plus{font-size:20px; line-height:1;}
+
+  .sheet-overlay{position:fixed; inset:0; z-index:150; background:rgba(0,0,0,.45); display:flex; align-items:flex-end; justify-content:center;}
+  .sheet-overlay.top{z-index:160;}
+  .sheet-box{
+    background:var(--surface); color:var(--ink);
+    width:100%; max-width:560px; max-height:90vh; overflow-y:auto;
+    border-radius:22px 22px 0 0;
+    padding:8px 18px calc(18px + env(safe-area-inset-bottom,0px));
+    animation:sheetUp .22s ease;
+  }
+  .sheet-overlay.tall .sheet-box{min-height:62vh;}
+  @keyframes sheetUp{from{transform:translateY(40px); opacity:.6;} to{transform:none; opacity:1;}}
+  .sheet-handle{width:44px; height:5px; border-radius:100px; background:var(--line); margin:4px auto 8px;}
+  .sheet-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;}
+  .sheet-head h3{margin:0; font-family:'Frank Ruhl Libre',serif; font-size:20px;}
+  .sheet-x{border:none; background:var(--paper); color:var(--ink); width:34px; height:34px; border-radius:50%; font-size:20px; cursor:pointer;}
+  .is-name-row{display:flex; gap:10px; align-items:center;}
+  .is-icon-btn{flex-shrink:0; width:52px; height:52px; border-radius:50%; border:1px solid var(--line); background:var(--paper); font-size:26px; cursor:pointer;}
+  .is-name-row input, .is-qty-row input, #isIconInput, #isNote, #cpName{
+    flex:1; width:100%;
+    border:1px solid var(--line); background:var(--paper); color:var(--ink);
+    border-radius:12px; padding:12px 14px; font-size:16px; font-family:'Assistant',sans-serif;
+  }
+  #isNote{resize:vertical;}
+  #isIconInput{width:90px; flex:none; text-align:center;}
+  .is-name-row input{font-size:18px; font-weight:700;}
+  .is-label{font-size:12.5px; font-weight:700; color:var(--ink-soft); margin:14px 0 6px;}
+  .is-qty-row{display:flex; gap:8px;}
+  .is-qty-row button{flex-shrink:0; width:46px; border:1px solid var(--line); background:var(--paper); color:var(--ink); border-radius:12px; font-size:20px; cursor:pointer;}
+  #isPlus{background:var(--herb); border-color:var(--herb); color:var(--on-herb,#fff);}
+  .is-cat-btn{
+    width:100%; display:flex; align-items:center; justify-content:space-between;
+    border:1px solid var(--line); background:var(--paper); color:var(--ink);
+    border-radius:12px; padding:13px 14px; font-size:16px; font-weight:700; cursor:pointer; font-family:'Assistant',sans-serif;
+  }
+  .is-cat-arrow{color:var(--ink-soft);}
+  .is-error{color:var(--brick); font-size:13px; min-height:18px; margin-top:8px;}
+  .is-actions{display:flex; gap:10px; margin-top:8px;}
+  .is-done{flex:1; border:none; background:var(--herb); color:var(--on-herb,#fff); padding:14px; border-radius:14px; font-size:16px; font-weight:800; cursor:pointer; font-family:'Assistant',sans-serif;}
+  .is-del{flex-shrink:0; width:54px; border:none; background:var(--brick-soft); color:var(--brick); border-radius:14px; font-size:20px; cursor:pointer;}
+  .cp-item{font-size:15px; font-weight:700; background:var(--paper); display:inline-block; padding:6px 14px; border-radius:100px; margin-bottom:4px;}
+  .cp-scroll{max-height:46vh; overflow-y:auto;}
+  .cp-row{width:100%; display:flex; align-items:center; gap:14px; padding:12px 6px; border:none; border-bottom:1px solid var(--line); background:none; color:var(--ink); font-size:16px; cursor:pointer; text-align:right; font-family:'Assistant',sans-serif;}
+  .cp-row.current{font-weight:800;}
+  .cp-icon{font-size:24px; width:34px; text-align:center; flex-shrink:0;}
+  .cp-name{flex:1;}
+  .cp-check{color:var(--herb); font-weight:800;}
+  .cp-foot{margin-top:10px;}
+  .cp-new-btn{width:100%; border:none; background:var(--herb); color:var(--on-herb,#fff); padding:14px; border-radius:14px; font-size:16px; font-weight:800; cursor:pointer; font-family:'Assistant',sans-serif;}
+  .lb-list{display:flex; flex-direction:column; gap:12px;}
+  .lb-card{display:flex; align-items:stretch; background:var(--paper); border:2px solid transparent; border-radius:18px; overflow:hidden;}
+  .lb-card.active{border-color:var(--ink);}
+  .lb-main{flex:1; text-align:right; border:none; background:none; color:var(--ink); padding:18px 18px 16px; cursor:pointer; font-family:'Assistant',sans-serif; display:flex; flex-direction:column; gap:12px; min-width:0;}
+  .lb-name{font-family:'Frank Ruhl Libre',serif; font-size:22px; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .lb-row{display:flex; align-items:center; gap:12px;}
+  .lb-count{font-size:15px; font-weight:700; color:var(--ink-soft); min-width:44px;}
+  .lb-bar{flex:1; height:10px; border-radius:100px; background:var(--line); overflow:hidden;}
+  .lb-bar i{display:block; height:100%; background:var(--herb); border-radius:100px;}
+  .lb-menu{flex-shrink:0; width:52px; border:none; background:none; color:var(--ink-soft); font-size:22px; cursor:pointer;}
+  .lb-foot{margin-top:16px;}
+  .lb-foot button{width:100%; border:none; background:var(--herb); color:var(--on-herb,#fff); padding:15px; border-radius:100px; font-size:16px; font-weight:800; cursor:pointer; font-family:'Assistant',sans-serif;}
+  .lm-row{width:100%; text-align:right; border:none; border-bottom:1px solid var(--line); background:none; color:var(--ink); padding:16px 6px; font-size:16px; cursor:pointer; font-family:'Assistant',sans-serif;}
+  .lm-row:disabled{opacity:.4; cursor:default;}
+  .lm-row.danger{color:var(--brick);}
+  .clear-filters-btn{
+    display:block; margin:6px auto 18px;
+    border:none; background:var(--herb); color:var(--on-herb,#fff);
+    padding:12px 22px; border-radius:100px; font-size:15px; font-weight:800; cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .top-suggestion{
+    background:#2B2A26;
+    color:#F6F3EA;
+    border-radius:26px;
+    padding:24px 22px 18px;
+    margin-bottom:20px;
+    box-shadow:0 22px 44px -28px rgba(20,18,12,.65);
+  }
+  body.dark .top-suggestion{background:#23221E; border:1px solid var(--line);}
+  .ts-label{font-size:12px; font-weight:700; color:#C9962E;}
+  .ts-title{font-family:'Frank Ruhl Libre',serif; font-size:32px; font-weight:900; line-height:1.1; margin-top:4px;}
+  .ts-sub{font-size:14.5px; color:#D9D5C7; margin-top:8px;}
+  .ts-tags{display:flex; flex-wrap:wrap; gap:6px; margin-top:12px;}
+  .ts-tag{font-size:12px; font-weight:700; padding:5px 11px; border-radius:100px; background:rgba(255,255,255,.12);}
+  .ts-ok{background:rgba(143,176,133,.35);}
+  .ts-miss{background:rgba(193,68,46,.35);}
+  .ts-quick{background:rgba(201,150,46,.28);}
+  .ts-healthy{background:rgba(143,176,133,.28);}
+  .ts-expiring{background:rgba(201,150,46,.28);}
+  .ts-cta{
+    display:block; width:100%; margin-top:18px;
+    border:none; background:#C1442E; color:#fff;
+    padding:14px; border-radius:100px; font-size:16px; font-weight:800; cursor:pointer;
+    font-family:'Frank Ruhl Libre',serif;
+    box-shadow:0 12px 24px -16px rgba(193,68,46,.8);
+  }
+  .ts-other{
+    display:block; margin:10px auto 0;
+    border:none; background:none; color:#D9D5C7;
+    font-size:13.5px; font-weight:700; cursor:pointer; padding:6px 12px;
+    font-family:'Assistant',sans-serif;
+  }
+  .shared-list-title{
+    font-size:12.5px;
+    font-weight:700;
+    color:var(--ink-soft);
+    margin:10px 0 4px;
+  }
+  .shared-list{
+    max-height:112px;
+    overflow-y:auto;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:var(--paper);
+    padding:2px 12px;
+  }
+  .shared-list-row{
+    font-size:13px;
+    padding:7px 0;
+    border-bottom:1px solid var(--line);
+    text-align:right;
+    word-break:break-all;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+  }
+  .unshare-btn{
+    flex-shrink:0;
+    border:none;
+    background:var(--brick-soft);
+    color:var(--brick);
+    width:26px; height:26px;
+    border-radius:50%;
+    font-size:15px;
+    font-weight:700;
+    cursor:pointer;
+    line-height:1;
+  }
+  .shared-list-row:last-child{border-bottom:none;}
+  .shared-list-note{
+    font-size:12.5px;
+    color:var(--ink-soft);
+    margin-top:8px;
+  }
+  .ac-chip.ac-already{
+    background:var(--mustard-soft);
+    color:var(--mustard);
+    border-color:transparent;
+    font-weight:700;
+  }
+
+  .section-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:12px;
+  }
+  .ranout-toggle{
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink-soft);
+    padding:6px 12px;
+    border-radius:100px;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .ranout-toggle.active{
+    background:var(--brick);
+    border-color:var(--brick);
+    color:#fff;
+  }
+  .ranout-banner{
+    background:var(--brick-soft);
+    color:var(--brick);
+    border-radius:12px;
+    padding:10px 14px;
+    font-size:13px;
+    font-weight:600;
+    margin-bottom:12px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .ranout-banner button{
+    border:none;
+    background:var(--brick);
+    color:#fff;
+    padding:5px 12px;
+    border-radius:8px;
+    font-size:12px;
+    font-weight:700;
+    cursor:pointer;
+    white-space:nowrap;
+    font-family:'Assistant',sans-serif;
+  }
+
+  .week-row-multi{
+    padding:10px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .week-row-multi:last-of-type{border-bottom:none;}
+  .week-day{
+    font-weight:700;
+    font-size:13.5px;
+    margin-bottom:6px;
+  }
+  .week-chips{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-bottom:8px;
+  }
+  .week-chip{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    background:var(--herb-soft);
+    color:var(--herb);
+    border-radius:100px;
+    padding:5px 6px 5px 12px;
+    font-size:12.5px;
+    font-weight:600;
+  }
+  .week-chip-x{
+    background:none;
+    border:none;
+    color:var(--herb);
+    font-size:14px;
+    line-height:1;
+    cursor:pointer;
+    padding:2px 4px;
+    opacity:.7;
+  }
+  .week-empty{
+    font-size:12.5px;
+    color:var(--ink-soft);
+  }
+  .week-select{
+    width:100%;
+    padding:7px 8px;
+    border-radius:8px;
+    border:1px solid var(--line);
+    font-family:'Assistant',sans-serif;
+    font-size:13px;
+    background:var(--surface);
+    color:var(--ink);
+  }
+
+  .settings-topic{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:14px;
+    margin-top:12px;
+    overflow:hidden;
+  }
+  .settings-topic:first-child{margin-top:16px;}
+  .topic-head{
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    background:none;
+    border:none;
+    padding:18px 18px;
+    cursor:pointer;
+    color:var(--ink);
+    text-align:right;
+    font-family:inherit;
+  }
+  .topic-head h2{
+    margin:0;
+    font-family:'Frank Ruhl Libre',serif;
+    font-weight:700;
+    font-size:19px;
+  }
+  .topic-arrow{
+    font-size:16px;
+    color:var(--ink-soft);
+    transition:transform .2s ease;
+    flex-shrink:0;
+  }
+  .settings-topic.open .topic-arrow{transform:rotate(180deg);}
+  .topic-body{
+    display:none;
+    padding:16px 18px 20px;
+    border-top:1px solid var(--line);
+  }
+  .settings-topic.open .topic-body{display:block;}
+  .settings-subtitle{
+    font-weight:700;
+    font-size:14px;
+    margin:0 0 6px;
+    color:var(--ink);
+  }
+
+  .settings-hint{
+    font-size:13.5px;
+    color:var(--ink-soft);
+    line-height:1.6;
+    margin-bottom:14px;
+  }
+  .import-btn{
+    border:none;
+    background:var(--ink);
+    color:var(--paper);
+    padding:11px 18px;
+    border-radius:12px;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .import-btn.secondary{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--ink);
+  }
+  .add-recipe-btn-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+  }
+  .import-form-box{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:16px;
+    margin-top:16px;
+  }
+  .import-form-box label{
+    display:block;
+    font-size:12.5px;
+    font-weight:700;
+    color:var(--ink-soft);
+    margin:12px 0 4px;
+  }
+  .import-form-box label:first-child{margin-top:0;}
+  .import-form-box input[type=text],
+  .import-form-box textarea{
+    width:100%;
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:8px 10px;
+    font-family:'Assistant',sans-serif;
+    font-size:13.5px;
+    color:var(--ink);
+    background:var(--paper);
+    resize:vertical;
+  }
+  .import-form-box textarea{min-height:90px; line-height:1.6;}
+  .import-form-actions{
+    display:flex;
+    gap:10px;
+    margin-top:14px;
+  }
+  .import-form-actions button{
+    border:none;
+    background:var(--brick);
+    color:#fff;
+    padding:9px 16px;
+    border-radius:10px;
+    font-size:13.5px;
+    font-weight:700;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .import-form-actions button.secondary{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--ink-soft);
+  }
+  .custom-recipe-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 0;
+    border-bottom:1px solid var(--line);
+    font-size:14px;
+  }
+  .custom-recipe-row:last-of-type{border-bottom:none;}
+  .custom-recipe-row button{
+    border:none;
+    background:var(--brick-soft);
+    color:var(--brick);
+    padding:5px 10px;
+    border-radius:8px;
+    font-size:12px;
+    font-weight:700;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .row-actions{display:flex; gap:6px; flex-shrink:0;}
+  .row-actions .edit-cat-btn,
+  .row-actions .edit-recipe-btn,
+  .restore-item-btn{
+    background:var(--herb-soft);
+    color:var(--herb);
+  }
+  .custom-empty{
+    font-size:13.5px;
+    color:var(--ink-soft);
+  }
+  .week-actions{
+    margin-top:14px;
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .week-actions button{
+    border:none;
+    background:var(--ink);
+    color:var(--paper);
+    padding:9px 14px;
+    border-radius:10px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .week-actions button.secondary{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--ink-soft);
+  }
+
+  .app-modal-overlay{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.5);
+    z-index:200;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+  }
+  .app-modal-overlay.active{display:flex;}
+  .app-modal-box{
+    background:var(--surface);
+    border-radius:16px;
+    padding:22px;
+    max-width:360px;
+    width:100%;
+  }
+  .app-modal-message{
+    font-size:15px;
+    line-height:1.6;
+    margin-bottom:14px;
+    color:var(--ink);
+  }
+  .app-modal-input{
+    width:100%;
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:10px 12px;
+    font-size:15px;
+    font-family:'Assistant',sans-serif;
+    color:var(--ink);
+    background:var(--paper);
+    margin-bottom:16px;
+  }
+  .app-modal-actions{
+    display:flex;
+    gap:10px;
+    justify-content:flex-end;
+  }
+  .app-modal-actions button{
+    border:none;
+    background:var(--brick);
+    color:#fff;
+    padding:9px 18px;
+    border-radius:10px;
+    font-size:14px;
+    font-weight:700;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .app-modal-actions button.secondary{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--ink-soft);
+  }
+
+  .barcode-overlay{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:#000;
+    z-index:100;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+  }
+  .barcode-overlay.active{display:flex;}
+  .barcode-overlay video{
+    width:100%;
+    max-width:480px;
+    border-radius:12px;
+  }
+  .barcode-hint{
+    color:#fff;
+    font-size:14px;
+    margin-top:14px;
+    text-align:center;
+    padding:0 20px;
+  }
+  .barcode-close{
+    margin-top:16px;
+    border:none;
+    background:var(--brick);
+    color:#fff;
+    padding:10px 22px;
+    border-radius:100px;
+    font-size:14px;
+    font-weight:700;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+
+  /* ===================== Elevate look =====================
+     Large rounded cards with soft shadows, small accent labels, calmer headings, roomier spacing,
+     pill-shaped inputs and buttons — carried over from the Lovable "Elevate" prototype. */
+  :root{
+    --shadow-soft:0 8px 24px -20px rgba(43,42,38,.45);
+    --shadow-cta:0 12px 24px -16px rgba(193,68,46,.75);
+    --shadow-hair:0 1px 0 rgba(43,42,38,.05);
+  }
+  body.dark{ --shadow-soft:0 8px 24px -18px rgba(0,0,0,.75); --shadow-hair:0 1px 0 rgba(0,0,0,.25); }
+  .wrap{max-width:560px; padding:0 20px 112px;}
+  header.top{padding:16px 0 14px;}
+  .header-row{align-items:center;}
+  .app-logo{width:44px; height:44px; border-radius:14px; box-shadow:var(--shadow-soft);}
+  header.top h1{font-size:20px; font-weight:800; margin:0; letter-spacing:0;}
+  header.top p{font-size:11.5px; font-weight:700; color:var(--brick); margin:0 0 2px;}
+  .theme-btn{box-shadow:var(--shadow-hair);}
+  section{margin-top:28px;}
+  section > h2{font-size:17px; font-weight:800; margin:0 0 12px;}
+
+  /* recipe cards */
+  .recipe-card{border-radius:20px; box-shadow:var(--shadow-soft); margin-bottom:14px; transition:transform .15s ease;}
+  .recipe-card:active{transform:scale(.995);}
+  .daily-card{border:none; border-radius:20px; box-shadow:var(--shadow-soft);}
+  .recipe-head h3{font-size:17px; font-weight:800;}
+  .match-frac{padding:3px 11px; border-radius:100px; font-size:12.5px;}
+  .match-full{background:var(--herb-soft); color:var(--herb);}
+  .match-partial{background:var(--mustard-soft); color:var(--mustard);}
+  .recipe-meta{margin-top:6px;}
+  .top-suggestion{border-radius:28px; margin-bottom:22px;}
+
+  /* inputs + buttons: pills */
+  .search-row input, .add-row input, .cat-add-row input, .shop-toolbar input{border-radius:100px; padding-inline:18px;}
+  .search-row input{padding-block:12px; box-shadow:var(--shadow-hair);}
+  .add-row button, .shop-toolbar button, .cat-add-row button{border-radius:100px; box-shadow:var(--shadow-cta); font-weight:800;}
+  .shop-toolbar button{padding:11px 20px;}
+  .shop-toolbar button.icon-btn{box-shadow:none;}
+
+  /* fridge */
+  .item-grid{border-radius:20px; padding:16px; box-shadow:var(--shadow-soft);}
+  .item-btn{border-color:rgba(91,117,83,.30); font-weight:700; padding:8px 15px; box-shadow:var(--shadow-hair);}
+  .item-btn:not(.selected):hover{background:var(--brick-soft); border-color:var(--brick);}
+  .item-del{border-color:rgba(91,117,83,.30);}
+
+  /* shopping: separate cards instead of one big box */
+  .shopping-panel{background:transparent; border:none; border-radius:0; overflow:visible;}
+  .lists-strip{margin-bottom:16px;}
+  .list-card{border-radius:18px; box-shadow:var(--shadow-soft);}
+  .lists-all-btn{border-radius:18px; box-shadow:var(--shadow-soft);}
+  .shop-toolbar{background:var(--surface); border:1px solid var(--line); border-radius:20px; box-shadow:var(--shadow-soft); padding:14px;}
+  .autocomplete-row{padding:0 4px;}
+  .shop-group{background:var(--surface); border:1px solid var(--line); border-radius:20px; box-shadow:var(--shadow-soft); overflow:hidden; margin-top:18px;}
+  .shop-group:last-of-type{border-bottom:1px solid var(--line);}
+  .shop-group-title{background:transparent; padding:14px 18px 4px; font-size:12.5px;}
+  .shop-item{padding:13px 18px;}
+  .shopping-empty{background:var(--surface); border:1px dashed var(--line); border-radius:20px; text-align:center; padding:30px 18px; margin-top:18px;}
+  .shop-checked-toggle{border-radius:100px;}
+
+  /* settings + sheets */
+  .settings-topic{border-radius:20px; box-shadow:var(--shadow-soft); margin-top:14px;}
+  .topic-head h2{font-size:17px; font-weight:800;}
+  .household-card{border-radius:20px;}
+  .sheet-box{border-radius:28px 28px 0 0;}
+  .lb-card{border-radius:20px; box-shadow:var(--shadow-soft);}
+  .tab-bar{box-shadow:0 -12px 30px -26px rgba(43,42,38,.55);}
+
+  .shop-toolbar #shopAddInput{flex:1 1 100%;}
+  .shop-toolbar input.shop-qty-input{flex:1 1 90px; min-width:80px;}
+  .shop-toolbar #shopAddBtn{flex:0 0 auto;}
+
+  /* fridge chips: ONE clean pill with a quiet × inside it (was a pill + a separate bubble) */
+  .item-btn-wrap{
+    display:inline-flex; align-items:center;
+    border:1px solid rgba(91,117,83,.30); border-radius:100px; overflow:hidden;
+    background:var(--surface); box-shadow:var(--shadow-hair);
+    transition:background .15s, border-color .15s;
+  }
+  .item-btn-wrap .item-btn, .item-btn{border:none; background:transparent; box-shadow:none; border-radius:0; padding:8px 4px 8px 14px; font-weight:700;}
+  .item-btn.selected{background:transparent; color:inherit;}
+  .item-btn-wrap:has(.item-btn.selected){background:var(--herb); border-color:var(--herb); color:var(--on-herb,#fff);}
+  .item-btn-wrap:has(.item-btn.selected) .item-btn{color:var(--on-herb,#fff);}
+  .item-btn-wrap:not(:has(.item-btn.selected)):hover{background:var(--brick-soft); border-color:var(--brick);}
+  .item-del{border:none; background:transparent; color:var(--ink-soft); opacity:.55; font-size:14px; font-weight:400; padding:0 11px 0 9px; align-self:stretch; border-radius:0;}
+  .item-del:hover{background:transparent; opacity:1; color:var(--brick);}
+  .item-btn-wrap:has(.item-btn.selected) .item-del{color:var(--on-herb,#fff); opacity:.7;}

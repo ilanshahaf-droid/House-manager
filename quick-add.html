@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#5B7553">
+<title>הוספה מהירה · ניהול משק בית</title>
+<link rel="manifest" href="quickadd-manifest.json">
+<link rel="icon" href="quickadd-icon-192.png">
+<link rel="apple-touch-icon" href="quickadd-icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@700;900&family=Assistant:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --paper:#F6F3EA; --ink:#2B2A26; --ink-soft:#6B675E; --line:#E4DFD0;
+    --surface:#FFFFFF; --herb:#5B7553; --herb-soft:#E3EADD; --brick:#C1442E; --mustard:#B8842A; --mustard-soft:#F3E6CA;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;width:100%;overflow-x:hidden;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Assistant',sans-serif;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-start;
+    padding:36px 24px 24px;
+  }
+  .wrap{max-width:420px; width:100%; text-align:center;}
+  h1{
+    font-family:'Frank Ruhl Libre',serif;
+    font-weight:900;
+    font-size:22px;
+    margin:0 0 4px;
+  }
+  .list-name{
+    font-size:13px;
+    color:var(--ink-soft);
+    margin-bottom:16px;
+  }
+  .add-row{
+    display:flex;
+    gap:8px;
+  }
+  input{
+    flex:1;
+    min-width:0;
+    border:1px solid var(--line);
+    background:var(--surface);
+    border-radius:12px;
+    padding:16px;
+    font-size:18px;
+    font-family:'Assistant',sans-serif;
+    color:var(--ink);
+  }
+  input:focus{outline:2px solid var(--herb); outline-offset:1px;}
+  button{
+    border:none;
+    background:var(--herb);
+    color:#fff;
+    border-radius:12px;
+    padding:0 22px;
+    font-size:17px;
+    font-weight:700;
+    font-family:'Assistant',sans-serif;
+    cursor:pointer;
+  }
+  .status{
+    margin-top:18px;
+    min-height:24px;
+    font-size:15px;
+    font-weight:700;
+    color:var(--herb);
+  }
+  .status.err{color:var(--brick);}
+  .recent{
+    margin-top:24px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    justify-content:center;
+  }
+  .recent span{
+    background:var(--herb-soft);
+    color:var(--herb);
+    padding:6px 12px;
+    border-radius:100px;
+    font-size:13px;
+  }
+  .ac-chip{
+    background:var(--surface);
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:6px 12px;
+    border-radius:100px;
+    font-size:13px;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .ac-chip.ac-already{
+    background:var(--mustard-soft);
+    color:var(--mustard);
+    border-color:transparent;
+    font-weight:700;
+  }
+  .freq-section{margin-top:26px; text-align:right;}
+  .freq-title{font-size:12.5px; font-weight:700; color:var(--ink-soft); margin-bottom:8px;}
+  .freq-grid{display:flex; flex-wrap:wrap; gap:8px;}
+  .freq-chip{
+    background:var(--herb-soft);
+    color:var(--herb);
+    border:none;
+    padding:9px 15px;
+    border-radius:100px;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+  }
+  .list-section{margin-top:22px; text-align:right;}
+  .list-title{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    font-size:12.5px;
+    font-weight:700;
+    color:var(--ink-soft);
+    margin-bottom:8px;
+  }
+  .list-count{color:var(--herb);}
+  .list-items{
+    max-height:220px;
+    overflow-y:auto;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--surface);
+  }
+  .list-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 12px;
+    border-bottom:1px solid var(--line);
+  }
+  .list-row:last-child{border-bottom:none;}
+  .list-check{
+    width:22px;
+    height:22px;
+    border-radius:6px;
+    border:2px solid var(--line);
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:14px;
+    color:#fff;
+    cursor:pointer;
+  }
+  .list-row.bought .list-check{background:var(--herb); border-color:var(--herb);}
+  .list-row.bought .list-item-name{text-decoration:line-through; opacity:.5;}
+  .list-item-name{flex:1; font-size:15px; cursor:pointer;}
+  .list-item-qty{font-size:12.5px; font-weight:400; color:var(--ink-soft);}
+  .list-qty-btn{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--ink-soft);
+    font-size:11px;
+    font-weight:600;
+    padding:3px 8px;
+    border-radius:100px;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .qty-inline-input{
+    flex:1;
+    border:1px solid var(--herb);
+    border-radius:8px;
+    padding:6px 10px;
+    font-size:14px;
+    font-family:'Assistant',sans-serif;
+  }
+  .list-qty-save{
+    background:var(--herb);
+    color:#fff;
+    border:none;
+    border-radius:8px;
+    padding:6px 12px;
+    font-size:14px;
+    cursor:pointer;
+  }
+  .list-del{
+    background:none;
+    border:none;
+    color:var(--brick);
+    font-size:16px;
+    font-weight:700;
+    padding:4px 6px;
+    cursor:pointer;
+  }
+  .list-empty{padding:16px; font-size:13.5px; color:var(--ink-soft); text-align:center;}
+  .list-title-actions{display:flex; align-items:center; gap:10px;}
+  .clear-bought-link{
+    color:var(--brick);
+    font-size:12px;
+    text-decoration:underline;
+    cursor:pointer;
+    font-weight:400;
+  }
+  .shopping-mode-btn{
+    display:block;
+    width:100%;
+    margin-top:14px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    color:var(--ink);
+  }
+  .shopping-mode-btn.active{
+    background:var(--herb);
+    border-color:var(--herb);
+    color:#fff;
+  }
+  body.shopping-mode .add-row,
+  body.shopping-mode #autocompleteRow,
+  body.shopping-mode .freq-section,
+  body.shopping-mode .open-app,
+  body.shopping-mode .logout-link,
+  body.shopping-mode .list-name{
+    display:none;
+  }
+  body.shopping-mode .list-items{max-height:none;}
+  body.shopping-mode .list-item-name{font-size:19px;}
+  body.shopping-mode .list-row{padding:16px 12px;}
+  .open-app{
+    display:inline-block;
+    margin-top:36px;
+    color:var(--ink-soft);
+    font-size:13px;
+    text-decoration:underline;
+  }
+  .login-box input{margin-bottom:10px;}
+  .login-btns{display:flex; gap:8px;}
+  .login-btns button{flex:1;}
+  .hint{font-size:12.5px; color:var(--ink-soft); line-height:1.6; margin-bottom:18px;}
+  .logout-link{
+    display:inline-block;
+    margin-top:14px;
+    color:var(--ink-soft);
+    font-size:12px;
+    text-decoration:underline;
+    cursor:pointer;
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">טוענים...</div>
+<script>
+const SUPABASE_URL = 'https://pznpibrlcbjpcoxagxns.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6bnBpYnJsY2JqcGNveGFneG5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NjEzMjUsImV4cCI6MjEwMjUzNzMyNX0.dvfKlGyI1U_E7G5POQJkLn28gky7cTyJbQqT3Mie_YU';
+const sbClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+const appEl = document.getElementById('app');
+
+const KNOWN_ITEMS = ["עגבניות","מלפפונים","בצל","שום","גזר","פלפל","תפוחי אדמה","קישואים","חסה","כרוב","פטריות","תרד","בטטה","ברוקולי","אפונה קפואה","חציל","במיה","תירס","כרובית","סלרי","כוסברה","ביצים","עוף","בשר טחון","טונה","גבינה צהובה","גבינה לבנה","קוטג'","טופו","נקניקיות","מוצרלה","סלמון","שעועית לבנה","חומוס","עדשים","שעועית אדומה","חלב","יוגורט","חמאה","שמנת מתוקה","שמנת חמוצה","גבינת שמנת","פטה","חלב קוקוס","אורז","פסטה","לחם","קמח","קינואה","בורגול","פיתות","נודלס","שיבולת שועל","גריסים","שמן זית","מלח","פלפל שחור","סוכר","רוטב סויה","טחינה","חומץ","דבש","אבקת אפייה","חמאת בוטנים","קארי","כמון","פפריקה","חרדל","מיונז","תפוח","בננה","לימון","ענבים","תותים","אבוקדו","תפוז","שומשום","תימין","זעתר","קינמון","צנוברים","פירורי לחם","שמרים יבשים","חמוציות מיובשות","אגוזי מלך"];
+let itemUsage = {};
+
+function getSuggestions(query){
+  const q = norm(query);
+  if(!q) return [];
+  const map = new Map();
+  KNOWN_ITEMS.forEach(i=>{ if(!map.has(i)) map.set(i, 0); });
+  Object.keys(itemUsage).forEach(i=> map.set(i, itemUsage[i]));
+  return [...map.entries()]
+    .filter(([name])=> name.startsWith(q) && name !== q)
+    .sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0],'he'))
+    .slice(0,6)
+    .map(([name])=>name);
+}
+async function loadItemUsage(user){
+  try{
+    const { data: rows } = await sbClient.from('user_data').select('*').eq('kind','app_state');
+    const row = (rows||[]).find(r=>r.owner_id===user.id) || (rows||[])[0];
+    if(row && row.payload && row.payload.itemUsage) itemUsage = row.payload.itemUsage;
+  }catch(e){ /* suggestions just won't be personalized this session */ }
+}
+
+function norm(s){ return (s||'').trim().replace(/\s+/g,' '); }
+
+function renderLogin(prefillStatus){
+  appEl.innerHTML = `
+    <h1>הוספה מהירה</h1>
+    <p class="hint">כדי שהוספות כאן יגיעו ל«ניהול משק בית», מתחברים פעם אחת עם אותו חשבון (אימייל+סיסמה) שכבר יש לכם שם.</p>
+    <div class="login-box">
+      <input type="email" id="email" placeholder="אימייל">
+      <input type="password" id="password" placeholder="סיסמה">
+      <div class="login-btns">
+        <button id="loginBtn">התחברות</button>
+      </div>
+    </div>
+    <div class="status" id="status">${prefillStatus||''}</div>
+  `;
+  document.getElementById('loginBtn').onclick = async ()=>{
+    const email = norm(document.getElementById('email').value);
+    const password = document.getElementById('password').value;
+    const status = document.getElementById('status');
+    status.className = 'status';
+    status.textContent = 'מתחברים...';
+    try{
+      const { error } = await sbClient.auth.signInWithPassword({ email, password });
+      if(error) throw error;
+      await start();
+    }catch(e){
+      status.className = 'status err';
+      status.textContent = 'שגיאה: ' + (e.message || 'התחברות נכשלה');
+    }
+  };
+}
+
+function pickTargetList(payload){
+  const lists = (payload && Object.keys(payload).length) ? payload : { main: { name:'רשימה ראשית', items:[], bought:[] } };
+  const key = lists.main ? 'main' : Object.keys(lists)[0];
+  if(!lists[key].quantities) lists[key].quantities = {};
+  return { lists, key };
+}
+
+async function renderAddScreen(user, row){
+  const { lists, key } = pickTargetList(row.payload);
+  appEl.innerHTML = `
+    <h1>הוספה מהירה</h1>
+    <div class="list-name">מוסיפים אל: ${lists[key].name || 'רשימה ראשית'} (${user.email})</div>
+    <div class="add-row">
+      <input type="text" id="itemInput" placeholder="מה להוסיף?" autofocus>
+      <input type="text" id="itemQtyInput" placeholder="כמות" style="flex:0 1 90px;">
+      <button id="addBtn">הוספה</button>
+    </div>
+    <div class="recent" id="autocompleteRow" style="margin-top:10px;"></div>
+    <div class="status" id="status"></div>
+    <button type="button" class="shopping-mode-btn" id="shoppingModeBtn">🔆 מצב קניות</button>
+    <div class="list-section">
+      <div class="list-title">
+        <span>הרשימה שלכם</span>
+        <div class="list-title-actions">
+          <span class="clear-bought-link" id="clearBoughtLink">מחקו מסומנים</span>
+          <span class="list-count" id="listCount"></span>
+        </div>
+      </div>
+      <div class="list-items" id="listItems"></div>
+    </div>
+    <div class="freq-section">
+      <div class="freq-title">מוצרים בשימוש תדיר — לחצו להוספה מהירה</div>
+      <div class="freq-grid" id="freqGrid"></div>
+    </div>
+    <a class="open-app" href="index.html">פתחו את ניהול משק בית</a>
+    <br>
+    <span class="logout-link" id="logoutLink">התנתקות</span>
+  `;
+  const input = document.getElementById('itemInput');
+  const status = document.getElementById('status');
+
+  function renderListItems(listData){
+    const el = document.getElementById('listItems');
+    const items = listData.items || [];
+    const bought = listData.bought || [];
+    const quantities = listData.quantities || {};
+    document.getElementById('listCount').textContent = items.length ? `${items.filter(i=>!bought.includes(i)).length}/${items.length}` : '';
+    if(items.length === 0){
+      el.innerHTML = '<div class="list-empty">הרשימה ריקה</div>';
+      return;
+    }
+    const sorted = [...items].sort((a,b)=> (bought.includes(a)?1:0) - (bought.includes(b)?1:0));
+    el.innerHTML = sorted.map(name=>{
+      const isBought = bought.includes(name);
+      const qty = quantities[name];
+      return `
+        <div class="list-row${isBought?' bought':''}" data-name="${name}">
+          <button type="button" class="list-check" data-action="toggle" data-name="${name}">${isBought?'✓':''}</button>
+          <span class="list-item-name" data-action="toggle" data-name="${name}">${name}${qty?` <span class="list-item-qty">(${qty})</span>`:''}</span>
+          <button type="button" class="list-qty-btn" data-action="qty" data-name="${name}">${qty?'✎':'+כמות'}</button>
+          <button type="button" class="list-del" data-action="del" data-name="${name}">×</button>
+        </div>`;
+    }).join('');
+    el.querySelectorAll('[data-action="toggle"]').forEach(elm=>{
+      elm.onclick = ()=> toggleBought(elm.dataset.name);
+    });
+    el.querySelectorAll('[data-action="del"]').forEach(elm=>{
+      elm.onclick = ()=> deleteItem(elm.dataset.name);
+    });
+    el.querySelectorAll('[data-action="qty"]').forEach(btn=>{
+      btn.onclick = ()=>{
+        const name = btn.dataset.name;
+        const row = btn.closest('.list-row');
+        const current = quantities[name] || '';
+        row.innerHTML = `
+          <span class="list-item-name" style="flex:none; font-weight:600;">${name}</span>
+          <input type="text" class="qty-inline-input" value="${current.replace(/"/g,'&quot;')}" placeholder="כמות">
+          <button type="button" class="list-qty-save">✓</button>
+        `;
+        const inp = row.querySelector('.qty-inline-input');
+        inp.focus();
+        const save = ()=> setQuantity(name, norm(inp.value));
+        row.querySelector('.list-qty-save').onclick = save;
+        inp.addEventListener('keydown', e=>{ if(e.key==='Enter') save(); });
+      };
+    });
+  }
+  renderListItems(lists[key]);
+
+  let realtimeChannel = null;
+  function subscribeRealtime(){
+    if(realtimeChannel) sbClient.removeChannel(realtimeChannel);
+    realtimeChannel = sbClient
+      .channel('quickadd_row_' + row.id)
+      .on('postgres_changes', { event:'UPDATE', schema:'public', table:'user_data', filter:`id=eq.${row.id}` }, (payload)=>{
+        const newRow = payload.new;
+        if(!newRow) return;
+        row.payload = newRow.payload;
+        const { lists: freshLists, key: freshKey } = pickTargetList(newRow.payload);
+        renderListItems(freshLists[freshKey]);
+        renderFrequentGrid(freshLists[freshKey].items);
+      })
+      .subscribe();
+  }
+  subscribeRealtime();
+
+  function renderFrequentGrid(currentItems){
+    const grid = document.getElementById('freqGrid');
+    const map = new Map();
+    KNOWN_ITEMS.forEach(i=>{ if(!map.has(i)) map.set(i, 0); });
+    Object.keys(itemUsage).forEach(i=> map.set(i, itemUsage[i]));
+    const pool = [...map.entries()]
+      .filter(([name])=> !currentItems.includes(name))
+      .sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0],'he'))
+      .slice(0,24)
+      .map(([name])=>name);
+    grid.innerHTML = pool.map(name=>`<button type="button" class="freq-chip" data-name="${name}">${name}</button>`).join('');
+    grid.querySelectorAll('.freq-chip').forEach(chip=>{
+      chip.onclick = ()=> addItem(chip.dataset.name, false);
+    });
+  }
+  renderFrequentGrid(lists[key].items || []);
+
+  function renderAutocomplete(){
+    const ac = document.getElementById('autocompleteRow');
+    const q = norm(input.value);
+    if(!q){ ac.innerHTML=''; return; }
+    const { lists: curLists, key: curKey } = pickTargetList(row.payload);
+    const currentItems = curLists[curKey].items || [];
+    const already = currentItems.filter(n=>n.startsWith(q)).sort((a,b)=>a.localeCompare(b,'he'));
+    const alreadySet = new Set(already);
+    const rest = getSuggestions(q).filter(n=>!alreadySet.has(n));
+    const sugg = [...already.map(n=>({name:n, already:true})), ...rest.map(n=>({name:n, already:false}))].slice(0,8);
+    ac.innerHTML = sugg.map(s=>`<button type="button" class="ac-chip${s.already?' ac-already':''}" data-name="${s.name}">${s.already?'✓ ':''}${s.name}</button>`).join('');
+    ac.querySelectorAll('.ac-chip').forEach(chip=>{
+      chip.onclick = ()=>{
+        input.value = chip.dataset.name;
+        document.getElementById('autocompleteRow').innerHTML = '';
+        addItem(chip.dataset.name, true);
+      };
+    });
+  }
+  input.addEventListener('input', renderAutocomplete);
+
+  // Fetches the current row fresh, lets `mutator` change freshLists[freshKey] in place, then saves.
+  async function mutateAndSave(mutator, busyMsg){
+    status.className = 'status';
+    status.textContent = busyMsg;
+    try{
+      const { data: fresh, error: fetchErr } = await sbClient.from('user_data').select('*').eq('id', row.id).single();
+      if(fetchErr) throw fetchErr;
+      const { lists: freshLists, key: freshKey } = pickTargetList(fresh.payload);
+      if(!freshLists[freshKey].items) freshLists[freshKey].items = [];
+      if(!freshLists[freshKey].bought) freshLists[freshKey].bought = [];
+      if(!freshLists[freshKey].quantities) freshLists[freshKey].quantities = {};
+      mutator(freshLists, freshKey);
+      const { error: updateErr } = await sbClient.from('user_data').update({
+        payload: freshLists,
+        updated_at: new Date().toISOString()
+      }).eq('id', row.id);
+      if(updateErr) throw updateErr;
+      row.payload = freshLists;
+      renderListItems(freshLists[freshKey]);
+      renderFrequentGrid(freshLists[freshKey].items);
+      return true;
+    }catch(e){
+      status.className = 'status err';
+      status.textContent = 'שגיאה בשמירה — נסו שוב (' + (e.message||'') + ')';
+      return false;
+    }
+  }
+
+  async function addItem(rawVal, refocus){
+    const val = norm(rawVal);
+    if(!val) return;
+    const qtyInput = document.getElementById('itemQtyInput');
+    const qty = qtyInput ? norm(qtyInput.value) : '';
+    input.disabled = true;
+    const ok = await mutateAndSave((freshLists, freshKey)=>{
+      if(!freshLists[freshKey].items.includes(val)) freshLists[freshKey].items.push(val);
+      freshLists[freshKey].bought = freshLists[freshKey].bought.filter(i=>i!==val);
+      if(qty) freshLists[freshKey].quantities[val] = qty; else delete freshLists[freshKey].quantities[val];
+    }, 'שומרים...');
+    if(ok){
+      status.textContent = `✓ "${val}" נוסף`;
+      input.value = '';
+      if(qtyInput) qtyInput.value = '';
+      document.getElementById('autocompleteRow').innerHTML = '';
+    }
+    input.disabled = false;
+    if(refocus) input.focus(); else input.blur();
+    setTimeout(()=>{ if(!status.className.includes('err')) status.textContent=''; }, 2500);
+  }
+
+  async function toggleBought(name){
+    await mutateAndSave((freshLists, freshKey)=>{
+      if(freshLists[freshKey].bought.includes(name)){
+        freshLists[freshKey].bought = freshLists[freshKey].bought.filter(i=>i!==name);
+      } else {
+        freshLists[freshKey].bought.push(name);
+      }
+    }, '');
+    status.textContent = '';
+  }
+
+  async function deleteItem(name){
+    await mutateAndSave((freshLists, freshKey)=>{
+      freshLists[freshKey].items = freshLists[freshKey].items.filter(i=>i!==name);
+      freshLists[freshKey].bought = freshLists[freshKey].bought.filter(i=>i!==name);
+      delete freshLists[freshKey].quantities[name];
+    }, '');
+    status.textContent = '';
+  }
+
+  async function setQuantity(name, qty){
+    await mutateAndSave((freshLists, freshKey)=>{
+      if(!freshLists[freshKey].quantities) freshLists[freshKey].quantities = {};
+      if(qty) freshLists[freshKey].quantities[name] = qty; else delete freshLists[freshKey].quantities[name];
+    }, '');
+    status.textContent = '';
+  }
+
+  async function clearBought(){
+    await mutateAndSave((freshLists, freshKey)=>{
+      const bought = freshLists[freshKey].bought || [];
+      freshLists[freshKey].items = freshLists[freshKey].items.filter(i=>!bought.includes(i));
+      freshLists[freshKey].bought = [];
+    }, '');
+    status.textContent = '';
+  }
+  document.getElementById('clearBoughtLink').onclick = clearBought;
+
+  let wakeLockRef = null;
+  async function acquireWakeLock(){
+    try{ if('wakeLock' in navigator) wakeLockRef = await navigator.wakeLock.request('screen'); }catch(e){}
+  }
+  function releaseWakeLock(){
+    if(wakeLockRef){ wakeLockRef.release().catch(()=>{}); wakeLockRef = null; }
+  }
+  const shoppingModeBtn = document.getElementById('shoppingModeBtn');
+  shoppingModeBtn.onclick = ()=>{
+    const active = document.body.classList.toggle('shopping-mode');
+    shoppingModeBtn.classList.toggle('active', active);
+    shoppingModeBtn.textContent = active ? '✕ יציאה ממצב קניות' : '🔆 מצב קניות';
+    if(active) acquireWakeLock(); else releaseWakeLock();
+  };
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState === 'visible' && document.body.classList.contains('shopping-mode')) acquireWakeLock();
+  });
+  document.addEventListener('visibilitychange', async ()=>{
+    if(document.visibilityState !== 'visible') return;
+    try{
+      const { data: fresh } = await sbClient.from('user_data').select('*').eq('id', row.id).single();
+      if(fresh){
+        row.payload = fresh.payload;
+        const { lists: freshLists, key: freshKey } = pickTargetList(fresh.payload);
+        renderListItems(freshLists[freshKey]);
+        renderFrequentGrid(freshLists[freshKey].items);
+      }
+    }catch(e){ /* offline — keep showing last known list */ }
+  });
+
+  document.getElementById('addBtn').onclick = ()=> addItem(input.value, true);
+  input.addEventListener('keydown', e=>{ if(e.key==='Enter') addItem(input.value, true); });
+
+  document.getElementById('logoutLink').onclick = async ()=>{
+    await sbClient.auth.signOut();
+    renderLogin();
+  };
+}
+
+async function start(){
+  appEl.textContent = 'טוענים...';
+  const { data:{ session } } = await sbClient.auth.getSession();
+  if(!session){ renderLogin(); return; }
+  const user = session.user;
+  try{
+    const { data: rows, error } = await sbClient.from('user_data').select('*').eq('kind','shopping_lists');
+    if(error) throw error;
+    let row = (rows||[]).find(r=>r.owner_id===user.id) || (rows||[])[0];
+    if(!row){
+      const { data: created, error: insErr } = await sbClient.from('user_data').insert({
+        owner_id: user.id, owner_email: user.email, kind:'shopping_lists',
+        payload: { main: { name:'רשימה ראשית', items:[], bought:[] } }
+      }).select().single();
+      if(insErr) throw insErr;
+      row = created;
+    }
+    await loadItemUsage(user);
+    await renderAddScreen(user, row);
+  }catch(e){
+    appEl.innerHTML = `<h1>הוספה מהירה</h1><div class="status err">שגיאה בטעינה: ${e.message||''}</div>`;
+  }
+}
+
+if(!sbClient){
+  appEl.innerHTML = '<h1>הוספה מהירה</h1><div class="status err">טעינת מודול ההתחברות נכשלה — בדקו חיבור לאינטרנט ורעננו.</div>';
+} else {
+  start();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#5B7553">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>ניהול משק בית</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700;900&family=Assistant:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="header-row">
+      <div class="header-brand">
+        <div class="app-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 11.5 L12 4.5 L20 11.5"/>
+            <path d="M6.5 10.5 V19.5 H17.5 V10.5"/>
+            <path d="M10.5 19.5 V14 H13.5 V19.5"/>
+            <rect x="14.2" y="13.2" width="5.2" height="6.2" rx="0.8" fill="#fff" stroke="none" opacity="0.95"/>
+            <path d="M15.2 14.8 h3.2 M15.2 16.4 h3.2 M15.2 18 h2.4" stroke="#5B7553" stroke-width="1.2"/>
+          </svg>
+        </div>
+        <div>
+          <p id="headerSub">רשימת קניות ומתכונים לפי מה שיש בבית</p>
+          <h1>ניהול משק בית</h1>
+        </div>
+      </div>
+      <button class="theme-btn" id="themeBtn" title="מצב כהה/בהיר">🌙</button>
+    </div>
+  </header>
+
+  <div class="tab-content" id="tab-fridge">
+    <section style="margin-top:16px;">
+      <div id="fridgeSummaryWrap"></div>
+    </section>
+    <section>
+      <div class="section-head">
+        <h2 style="margin:0;">הוספה מהירה</h2>
+        <button class="ranout-toggle" id="ranoutToggleBtn">מה נגמר?</button>
+      </div>
+      <div class="ranout-banner" id="ranoutBanner" style="display:none;">
+        מצב "מה נגמר" פעיל — לחיצה על מצרך תעביר אותו לרשימת הקניות ותסיר מהמקרר
+        <button id="ranoutExitBtn">סיום</button>
+      </div>
+      <div class="add-row">
+        <input type="text" id="customInput" placeholder="הקלידו מצרך והוסיפו...">
+        <button id="customAddBtn">הוספה</button>
+      </div>
+      <div class="autocomplete-row" id="fridgeAutocomplete"></div>
+      <div class="cam-status" id="camStatus"></div>
+      <div class="cat-tabs" id="catTabs"></div>
+      <div class="item-grid" id="itemGrid"></div>
+    </section>
+  </div>
+
+  <div class="tab-content" id="tab-recipes">
+    <section style="margin-top:16px;">
+      <div class="section-head">
+        <h2 style="margin:0;">תוכנית שבועית</h2>
+        <button class="ranout-toggle" id="weekToggleBtn">▾</button>
+      </div>
+      <div id="weekPlan" style="display:none;"></div>
+    </section>
+    <section id="topSuggestionSection" style="display:none;">
+      <div id="topSuggestion"></div>
+    </section>
+    <section>
+      <h2>מתכון היום</h2>
+      <div id="dailyRecipe"></div>
+    </section>
+    <section>
+      <h2>מתכונים מתאימים</h2>
+      <div class="filters-wrap">
+        <div class="search-row">
+          <input type="search" id="searchInput" name="recipe_search" placeholder="חיפוש מתכון לפי שם..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
+        </div>
+        <div class="filter-row" id="filterRow"></div>
+      </div>
+      <div id="recipeResults">
+        <p class="empty-state">ברגע שיהיה משהו במקרר, כאן יופיעו הצעות למתכונים — מהקרוב ביותר למה שיש, ועד לרחוקים יותר.</p>
+      </div>
+    </section>
+  </div>
+
+  <div class="tab-content active" id="tab-shopping">
+    <section style="margin-top:16px;">
+      <div class="section-head">
+        <h2 style="margin:0;">רשימת קניות</h2>
+        <button class="ranout-toggle" id="openShoppingModeBtn">🔆 מצב קניות</button>
+      </div>
+      <div class="shopping-panel" id="shoppingPanel"></div>
+    </section>
+  </div>
+
+  <div class="tab-content" id="tab-settings">
+
+    <div class="settings-topic">
+      <button type="button" class="topic-head" aria-expanded="false">
+        <h2>חשבון ושיתוף</h2><span class="topic-arrow">▾</span>
+      </button>
+      <div class="topic-body">
+        <p class="settings-hint">התחברו עם אימייל וסיסמה כדי שהמקרר, רשימות הקניות והמתכונים שלכם יסתנכרנו אוטומטית לכל מכשיר שתתחברו בו — ואפשר לשתף אותם עם מישהו אחר שיש לו חשבון משלו.</p>
+        <div id="accountBox"></div>
+      </div>
+    </div>
+
+    <div class="settings-topic">
+      <button type="button" class="topic-head" aria-expanded="false">
+        <h2>ניהול רשימת קניות</h2><span class="topic-arrow">▾</span>
+      </button>
+      <div class="topic-body">
+        <p class="settings-hint">סנכרון, ייבוא, שיתוף וניקוי של הרשימה הפעילה. בוחרים איזו רשימה פעילה בלשונית "קניות".</p>
+
+        <div class="settings-subtitle">הודעות כשבן משפחה מוסיף פריט</div>
+        <p class="settings-hint">כשמישהו מוסיף פריט לרשימה המשותפת, תופיע הודעה בראש המסך (כשהאפליקציה פתוחה). אפשר להוסיף גם התראת מערכת כשהאפליקציה פתוחה ברקע — היא לא תגיע אם האפליקציה סגורה לגמרי.</p>
+        <div class="add-row" style="margin-bottom:8px;">
+          <input type="text" id="displayNameInput" placeholder="השם שיוצג לבני המשפחה">
+          <button id="displayNameSaveBtn">שמרו</button>
+        </div>
+        <label class="clearcat-item" style="margin-bottom:8px;">
+          <input type="checkbox" id="addedNotifyToggle"> התראת מערכת כשהאפליקציה ברקע (במכשיר הזה)
+        </label>
+        <div class="cam-status" id="addedNotifyStatus" style="margin-bottom:16px;"></div>
+
+        <div class="settings-subtitle">התראות דחיפה — גם כשהאפליקציה סגורה</div>
+        <p class="settings-hint">מופיעה התראה בטלפון כשבן משפחה מוסיף פריט, גם כשהאפליקציה סגורה לגמרי. מפעילים בכל מכשיר בנפרד. באייפון זה עובד רק אם האפליקציה מותקנת על מסך הבית.</p>
+        <label class="clearcat-item" style="margin-bottom:8px;">
+          <input type="checkbox" id="pushToggle"> הפעילו התראות דחיפה במכשיר הזה
+        </label>
+        <div class="cam-status" id="pushStatus"></div>
+        <button type="button" class="import-btn secondary" id="pushTestBtn" style="margin-bottom:18px;">שלחו התראת בדיקה</button>
+
+        <div id="shoppingManageBox"></div>
+      </div>
+    </div>
+
+    <div class="settings-topic">
+      <button type="button" class="topic-head" aria-expanded="false">
+        <h2>מתכונים</h2><span class="topic-arrow">▾</span>
+      </button>
+      <div class="topic-body">
+        <div class="settings-subtitle">הוספת מתכונים</div>
+        <p class="settings-hint">טוענים קובץ Word (.docx) או PDF שמכיל מתכון אחד, או מזינים מתכון ידנית לפי אותם שדות. המערכת תנסה לזהות כותרת, מצרכים והוראות הכנה מתוך קובץ — ותאפשר לכם לתקן לפני השמירה.</p>
+        <input type="file" id="importFileInput" accept=".docx,.pdf" style="display:none;">
+        <div class="add-recipe-btn-row">
+          <button class="import-btn" id="importFileBtn">📄 בחרו קובץ להעלאה</button>
+          <button class="import-btn secondary" id="manualAddRecipeBtn">✏️ הוסיפו מתכון ידנית</button>
+        </div>
+        <div class="cam-status" id="importStatus"></div>
+        <div id="importForm"></div>
+
+        <div class="section-head" style="margin-top:22px;">
+          <span class="settings-subtitle" style="margin:0;">מתכונים שיובאו</span>
+          <button class="ranout-toggle" id="toggleImportedRecipesBtn">▾</button>
+        </div>
+        <div id="recipeSyncBox"></div>
+        <div id="customRecipesListWrap" style="display:none;">
+          <div id="customRecipesList"></div>
+        </div>
+
+        <div class="settings-subtitle" style="margin-top:20px;">שילוב קבוע בעדכון הבא</div>
+        <p class="settings-hint">המתכונים והמצרכים המותאמים שלכם לא נכנסים אוטומטית לקוד הקבוע של האפליקציה — אבל אפשר לייצא אותם, ולשלוח לי את הטקסט בשיחה הבאה כדי שאשלב אותם בקביעות בעדכון.</p>
+        <button class="import-btn" id="exportCustomBtn">📤 ייצוא לשילוב קבוע</button>
+      </div>
+    </div>
+
+    <div class="settings-topic">
+      <button type="button" class="topic-head" aria-expanded="false">
+        <h2>ניהול מלאי</h2><span class="topic-arrow">▾</span>
+      </button>
+      <div class="topic-body">
+        <div class="settings-subtitle">תזכורות על פריטים שעומדים לפוג</div>
+        <p class="settings-hint">מקבלים התראה במכשיר הזה פעם ביום, כשפותחים את האפליקציה, אם יש פריט במקרר שפג תוקפו או עומד לפוג בתוך יומיים. ההתראות נשמרות בכל מכשיר בנפרד.</p>
+        <label class="clearcat-item" style="margin-bottom:8px;">
+          <input type="checkbox" id="expiryNotifyToggle"> הפעילו תזכורות במכשיר הזה
+        </label>
+        <div class="cam-status" id="expiryNotifyStatus"></div>
+        <button type="button" class="import-btn secondary" id="expiryNotifyTestBtn" style="margin-bottom:18px;">שלחו התראת בדיקה</button>
+
+        <div class="settings-subtitle">איפוס יומי של המקרר</div>
+        <p class="settings-hint">כשמופעל, קטגוריות שאינן מוגנות יתאפסו אוטומטית פעם ביום (בפעם הראשונה שפותחים את האפליקציה באותו יום).</p>
+        <label class="clearcat-item" style="margin-bottom:12px;">
+          <input type="checkbox" id="autoResetToggle"> הפעילו איפוס יומי אוטומטי
+        </label>
+        <div class="settings-hint" style="margin-bottom:8px; font-weight:700;">קטגוריות מוגנות (לא יתאפסו):</div>
+        <div class="clearcat-grid" id="protectedCatsGrid"></div>
+      </div>
+    </div>
+
+    <div class="settings-topic">
+      <button type="button" class="topic-head" aria-expanded="false">
+        <h2>סיווג מצרכים ואייקונים</h2><span class="topic-arrow">▾</span>
+      </button>
+      <div class="topic-body">
+        <p class="settings-hint">קבעו לאיזו קטגוריה ישויך מצרך ברשימת הקניות, ואפשר גם לתת לו אייקון משלכם (למשל "גבינה בולגרית" ← מוצרי חלב 🧀).</p>
+        <p class="settings-hint">שתפו את הסיווגים שלכם עם מי שאתם חולקים איתם רשימת קניות — כדי שהקטגוריות ייראו אצלו באותו אופן, בלי לשתף את המקרר או שאר הנתונים האישיים שלכם.</p>
+        <div id="categorySettingsSyncBox"></div>
+        <div class="add-row">
+          <input type="text" id="catAssignInput" placeholder="שם המצרך...">
+          <select id="catAssignSelect" class="week-select" style="flex:1 1 140px;"></select>
+          <input type="text" id="catAssignIcon" placeholder="אייקון (אימוג׳י)" style="flex:0 1 130px; border:1px solid var(--line); border-radius:10px; padding:8px 10px; font-size:15px; text-align:center; background:var(--surface);">
+          <button id="catAssignBtn">שמרו</button>
+        </div>
+        <div class="settings-subtitle" style="margin-top:20px;">קטגוריות מותאמות אישית</div>
+        <p class="settings-hint">מוסיפים קטגוריה חדשה משלכם — היא תופיע לצד הקבועות בכל מקום שבוחרים קטגוריה (הקצאת מצרך, רשימת הקניות, איפוס יומי).</p>
+        <div class="add-row">
+          <input type="text" id="newCatInput" placeholder="שם קטגוריה חדשה...">
+          <button id="addCatBtn">הוסיפו קטגוריה</button>
+        </div>
+        <div id="customCatsList" style="margin-top:10px;"></div>
+
+        <div class="section-head" style="margin-top:14px;">
+          <span class="settings-hint" style="margin:0; font-weight:700;">מצרכים שהוגדרו</span>
+          <button class="ranout-toggle" id="toggleAddedItemsBtn">▾</button>
+        </div>
+        <div id="catOverridesListWrap" style="display:none;">
+          <div id="catOverridesList"></div>
+        </div>
+
+        <div class="section-head" style="margin-top:14px;">
+          <span class="settings-hint" style="margin:0; font-weight:700;">מצרכים שהוסרו מקטגוריות</span>
+          <button class="ranout-toggle" id="toggleRemovedItemsBtn">▾</button>
+        </div>
+        <div id="removedItemsListWrap" style="display:none;">
+          <div id="removedItemsList"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-topic">
+      <button type="button" class="topic-head" aria-expanded="false">
+        <h2>זיהוי מצלמה וברקוד</h2><span class="topic-arrow">▾</span>
+      </button>
+      <div class="topic-body">
+        <p class="settings-hint">כל פעם שתיקנתם זיהוי מצלמה או ברקוד, המערכת זוכרת את זה לפעם הבאה. אפשר לנקות פריטים שנלמדו בטעות.</p>
+        <div id="learnedList"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer class="hint">ניהול משק בית · הנתונים נשמרים אצלכם · אפשר לסנכרן בין מכשירים</footer>
+</div>
+
+<nav class="tab-bar">
+  <button class="tab-btn active" id="tabBtnShopping" data-tab="shopping">
+    <span class="tab-icon">🛒</span>
+    <span>קניות</span>
+  </button>
+  <button class="tab-btn" id="tabBtnRecipes" data-tab="recipes">
+    <span class="tab-icon">🍽️</span>
+    <span>מתכונים</span>
+  </button>
+  <button class="tab-btn" id="tabBtnFridge" data-tab="fridge">
+    <span class="tab-icon">🧊</span>
+    <span>המקרר</span>
+  </button>
+  <button class="tab-btn" id="tabBtnSettings" data-tab="settings">
+    <span class="tab-icon">⚙️</span>
+    <span>הגדרות</span>
+  </button>
+</nav>
+
+<!-- Cooking mode overlay -->
+<div class="app-modal-overlay" id="appModalOverlay">
+  <div class="app-modal-box">
+    <div class="app-modal-message" id="appModalMessage"></div>
+    <input type="text" class="app-modal-input" id="appModalInput" style="display:none;">
+    <textarea class="app-modal-input" id="appModalTextarea" rows="6" style="display:none;"></textarea>
+    <div class="app-modal-actions">
+      <button id="appModalCancel" class="secondary">ביטול</button>
+      <button id="appModalOk">אישור</button>
+    </div>
+  </div>
+</div>
+
+<div class="barcode-overlay" id="barcodeOverlay">
+  <video id="barcodeVideo" autoplay playsinline muted></video>
+  <div class="barcode-hint" id="barcodeHint">כוונו את המצלמה לברקוד המוצר</div>
+  <button class="barcode-close" id="barcodeCloseBtn">ביטול</button>
+</div>
+
+<div class="shopping-mode-overlay" id="shoppingModeOverlay">
+  <div class="sm-header">
+    <span class="sm-title">מצב קניות</span>
+    <button class="sm-close" id="smCloseBtn">סגור</button>
+  </div>
+  <div class="sm-search-wrap">
+    <input type="search" id="smSearchInput" placeholder="חיפוש פריט..." autocomplete="off" enterkeyhint="search">
+  </div>
+  <div class="sm-list" id="smList"></div>
+</div>
+
+<div class="cook-overlay" id="cookOverlay">
+  <div class="cook-header">
+    <h2 id="cookTitle"></h2>
+    <button class="cook-close" id="cookCloseBtn">סגור</button>
+  </div>
+  <div class="cook-view-toggle" id="cookViewToggle">
+    <button type="button" data-mode="pages" class="active">עמודים</button>
+    <button type="button" data-mode="list">רשימה אחת</button>
+  </div>
+  <div class="cook-progress"><div class="cook-progress-bar" id="cookProgressBar"></div></div>
+  <div class="cook-step-row">
+    <div class="cook-step-num" id="cookStepNum"></div>
+    <button class="cook-speak-btn" id="cookSpeakBtn">🔊 הקריאו</button>
+  </div>
+  <div class="cook-step-text" id="cookStepText"></div>
+  <div class="cook-nav">
+    <button class="prev" id="cookPrevBtn">הקודם</button>
+    <button class="next" id="cookNextBtn">הבא</button>
+  </div>
+  <div class="cook-timer-fab" id="cookTimerFab">
+    <div class="cook-timer-panel" id="cookTimerPanel">
+      <div class="cook-timer-display" id="cookTimerDisplay">00:00</div>
+      <div class="cook-timer-btns">
+        <button type="button" data-min="1">+1 דק׳</button>
+        <button type="button" data-min="5">+5 דק׳</button>
+        <button type="button" data-min="10">+10 דק׳</button>
+        <button type="button" id="timerStartBtn">התחל</button>
+        <button type="button" id="timerResetBtn">איפוס</button>
+      </div>
+    </div>
+    <button type="button" class="cook-timer-fab-btn" id="cookTimerFabBtn" aria-label="טיימר">🕐</button>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
