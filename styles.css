@@ -1064,11 +1064,52 @@
   }
   .cook-list-mode .cook-progress,
   .cook-list-mode .cook-nav{display:none;}
-  .cook-list-mode .cook-step-text{font-size:18px; line-height:1.65;}
-  .cook-list-steps{margin:0; padding-inline-start:22px; font-size:18px; line-height:1.7;}
-  .cook-list-steps li{margin-bottom:10px;}
+  /* list-mode instructions: same large type as step-by-step pages */
+  .cook-list-mode .cook-step-text{font-size:34px; line-height:1.5;}
+  .cook-list-steps{
+    margin:0;
+    padding-inline-start:28px;
+    font-family:'Frank Ruhl Libre',serif;
+    font-size:34px;
+    line-height:1.5;
+  }
+  .cook-list-steps li{margin-bottom:18px;}
   .cook-list-ing-title, .cook-list-steps-title{
     font-size:13px; font-weight:700; color:var(--ink-soft); margin:16px 0 8px;
+  }
+  .cook-list-mode .cook-ing-text{font-size:23px;}
+  .shop-actions-bar{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:14px;
+  }
+  .shop-actions-bar button{
+    flex:1 1 auto;
+    min-width:140px;
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink);
+    padding:11px 14px;
+    border-radius:12px;
+    font-size:13.5px;
+    font-weight:700;
+    cursor:pointer;
+    font-family:'Assistant',sans-serif;
+    box-shadow:var(--shadow-hair);
+  }
+  .shop-actions-bar button.danger{
+    color:var(--brick);
+    border-color:rgba(193,68,46,.35);
+  }
+  .shop-actions-bar button.primary-action{
+    background:var(--herb);
+    border-color:var(--herb);
+    color:var(--on-herb,#fff);
+  }
+  .shop-actions-bar button:disabled{
+    opacity:.4;
+    cursor:default;
   }
   .sm-search-wrap{padding:0 0 12px;}
   .sm-search-wrap input{

@@ -2412,6 +2412,11 @@ function renderShoppingPanel(){
     </button>`;
   }
 
+  html += `<div class="shop-actions-bar">
+    <button type="button" class="danger" id="shopClearBoughtBtn" ${checkedCount? '':'disabled'}>🧹 נקו מסומנים${checkedCount?` (${checkedCount})`:''}</button>
+    <button type="button" class="primary-action" id="shopSaveListBtn">💾 שמרו רשימה לשימוש בהמשך</button>
+  </div>`;
+
   el.innerHTML = html;
   wireListSwitcher();
   wireShopToolbar();
@@ -2438,6 +2443,55 @@ function renderShoppingPanel(){
       renderShoppingPanel();
     };
   }
+  const clearBoughtBtn = document.getElementById('shopClearBoughtBtn');
+  if(clearBoughtBtn){
+    clearBoughtBtn.onclick = ()=>{
+      if(boughtItems.size === 0) return;
+      showConfirmModal(`להסיר מהרשימה ${boughtItems.size} פריטים שסומנו כנקנו?`, ()=>{
+        clearBoughtInList(activeListId);
+        renderShoppingPanel();
+        renderTabBadges();
+      });
+    };
+  }
+  const saveListBtn = document.getElementById('shopSaveListBtn');
+  if(saveListBtn){
+    saveListBtn.onclick = ()=> saveShoppingListForLater();
+  }
+}
+
+/** Snapshot the current shopping list as a new named list (ready to reuse later). */
+function saveShoppingListForLater(){
+  if(shoppingList.size === 0){
+    alert('הרשימה ריקה — אין מה לשמור');
+    return;
+  }
+  const active = getActiveList();
+  const defaultName = (active.name || 'רשימה') + ' — שמורה';
+  showPromptModal('שם לרשימה השמורה (אפשר לחזור אליה מאוחר יותר):', (name)=>{
+    const id = 'saved_' + Date.now().toString(36);
+    const quantities = {};
+    const notes = {};
+    const srcQty = active.quantities || {};
+    const srcNotes = active.notes || {};
+    [...shoppingList].forEach(item=>{
+      if(srcQty[item]) quantities[item] = srcQty[item];
+      if(srcNotes[item]) notes[item] = srcNotes[item];
+    });
+    shoppingLists[id] = {
+      name,
+      items: [...shoppingList],
+      bought: [], // fresh list — nothing marked bought
+      quantities,
+      notes,
+      syncCode: null
+    };
+    localStorage.setItem('shopping_lists', JSON.stringify(shoppingLists));
+    scheduleShoppingPush();
+    renderShoppingPanel();
+    renderTabBadges();
+    alert(`✓ נשמרה הרשימה «${name}»\nאפשר לעבור אליה מהפס העליון של רשימות הקניות.`);
+  }, defaultName);
 }
 
 function renderShopManageBox(){
