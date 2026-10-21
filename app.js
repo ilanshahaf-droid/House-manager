@@ -3299,11 +3299,15 @@ function renderTabBadges(){
   } else if(fridgeBadge){ fridgeBadge.remove(); }
 
   let shopBadge = shopBtn.querySelector('.tab-badge');
-  const unbought = Object.entries(shoppingLists).reduce((sum,[id,list])=>{
-    const items = id === activeListId ? [...shoppingList] : (list.items||[]);
-    const bought = id === activeListId ? boughtItems : new Set(list.bought||[]);
-    return sum + items.filter(i=>!bought.has(i)).length;
-  }, 0);
+  // Badge shows only the main list's open items — saved lists don't inflate the number
+  let unbought = 0;
+  if(activeListId === 'main'){
+    unbought = [...shoppingList].filter(i=>!boughtItems.has(i)).length;
+  } else {
+    const main = shoppingLists.main || { items:[], bought:[] };
+    const bought = new Set(main.bought || []);
+    unbought = (main.items || []).filter(i=>!bought.has(i)).length;
+  }
   if(unbought > 0){
     if(!shopBadge){ shopBadge = document.createElement('span'); shopBadge.className='tab-badge'; shopBtn.appendChild(shopBadge); }
     shopBadge.textContent = unbought;
