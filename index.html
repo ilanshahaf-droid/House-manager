@@ -978,7 +978,7 @@ function adminApprovals() {
     ${reps.length ? `<div class="list">${reps.map(r => {
       const isTask = r.kind === 'task', js = isTask ? taskJoins(r.task_id) : [], n = Math.max(js.length, 1);
       return `<div class="appr ${isTask ? 'task' : ''}"><div class="top">${kidTag(r.kid_id)}<div style="flex:1"><div style="font-weight:700">${esc(prof(r.kid_id)?.display_name)} · ${isTask ? '⚡ משימת בונוס: ' : esc(chore(r.chore_id)?.emoji||'') + ' '}${esc(r.title)}</div><div class="muted small">${fmtDate(r.created_at)}${r.week_start && !isTask ?' · שבוע '+fmtWeek(r.week_start):''}</div></div></div>
-      ${isTask ? `<div class="note">👥 ${js.map(j => esc(prof(j.kid_id)?.display_name || '')).join(', ')} · ${n > 1 ? `מתחלקים: ~${Math.floor(r.credits / n)} לכל אחד` : 'לבד'}</div>` : ''}
+      ${isTask ? `<div class="note row-between"><span>👥 ${js.map(j => esc(prof(j.kid_id)?.display_name || '')).join(', ') || 'אין משתתפים'} · ${n > 1 ? `מתחלקים: ~${Math.floor(r.credits / n)} לכל אחד` : 'לבד'}</span><button class="btn sm ghost" data-act="editTask" data-id="${r.task_id}">✏️ תיקון משתתפים</button></div>` : ''}
       ${r.note ? `<div class="note">💬 ${esc(r.note)}</div>` : ''}
       ${r.photo_path ? `<img class="appr-photo" data-photo="${esc(r.photo_path)}" data-act="viewPhoto" alt="תמונה מהדיווח">` : ''}
       <div class="praise"><input class="input" id="pr-${r.id}" maxlength="140" placeholder="💬 חיזוק מילולי (לא חובה) — מגיע לילד עם האישור"><div class="praise-chips">${PRAISES.map(p => `<button type="button" class="chip-btn" data-act="praise" data-id="${r.id}" data-p="${esc(p)}">${p}</button>`).join('')}</div></div>
@@ -1209,13 +1209,24 @@ const ACT = {
       <div class="field"><label>כמה ילדים יכולים להשתתף?</label><input class="input" type="number" min="1" max="10" name="max_people" value="${t.max_people}" required><span class="hint">יותר מ-1 = משימה משותפת, הקרדיטים מתחלקים</span></div></div>
       <div class="field"><label>עד מתי? (לא חובה)</label><input class="input" type="date" name="deadline" value="${t.deadline || ''}" style="width:180px"></div>
       <label class="check"><input type="checkbox" name="photo_required" ${t.photo_required ? 'checked' : ''}> חובה לצרף תמונה בדיווח</label>
-      ${js.length ? `<p class="muted small">משתתפים כרגע: ${js.map(j => esc(prof(j.kid_id)?.display_name || '')).join(', ')}</p>` : ''}
+      ${d.id ? `<div class="field" style="margin-top:8px"><label>👥 משתתפים</label><span class="hint">תיקון ידני — אפשר להוסיף או להסיר ילדים גם אחרי שדווח. הקרדיטים יתחלקו לפי הרשימה הזו באישור.</span>
+        ${kids().map(k => `<label class="check"><input type="checkbox" name="ppl" value="${k.id}" ${js.some(j => j.kid_id === k.id) ? 'checked' : ''}> ${esc(k.avatar)} ${esc(k.display_name)}</label>`).join('')}</div>` : ''}
       <div class="row-end">${d.id ? `<button type="button" class="btn soft-bad" id="closeT">סגירת המשימה</button>` : ''}<button class="btn" type="submit">${d.id ? 'שמירה' : 'פרסום לילדים 📣'}</button></div></form>`);
     wirePickers(m);
     m.querySelector('#tF').onsubmit = async ev => {
       ev.preventDefault(); const f = ev.target;
       const row = { title: f.title.value.trim(), emoji: f.emoji.value.trim() || '⚡', description: f.description.value.trim() || null, credits: +f.credits.value, max_people: +f.max_people.value, deadline: f.deadline.value || null, photo_required: f.photo_required.checked };
-      const ok = await run(async () => must(d.id ? await sb.from('ch_tasks').update(row).eq('id', d.id) : await sb.from('ch_tasks').insert(row)), d.id ? 'נשמר' : 'המשימה פורסמה — הילדים קיבלו התראה 📣');
+      const want = d.id ? [...f.querySelectorAll('[name=ppl]:checked')].map(x => x.value) : null;
+      if (want && taskClaim(t.id) && !want.length) return toast('יש דיווח שממתין — צריך להשאיר לפחות משתתף אחד', 'bad');
+      if (want && want.length > row.max_people) row.max_people = want.length;
+      const ok = await run(async () => {
+        must(d.id ? await sb.from('ch_tasks').update(row).eq('id', d.id) : await sb.from('ch_tasks').insert(row));
+        if (want) {
+          const have = js.map(j => j.kid_id);
+          for (const id of have.filter(x => !want.includes(x))) must(await sb.from('ch_task_joins').delete().eq('task_id', t.id).eq('kid_id', id));
+          for (const id of want.filter(x => !have.includes(x))) must(await sb.from('ch_task_joins').insert({ task_id: t.id, kid_id: id }));
+        }
+      }, d.id ? 'נשמר' : 'המשימה פורסמה — הילדים קיבלו התראה 📣');
       if (ok) closeModal();
     };
     const cl = m.querySelector('#closeT');
