@@ -1918,6 +1918,7 @@
     width:100%;
   }
   .app-modal-message{
+    white-space:pre-line;
     font-size:15px;
     line-height:1.6;
     margin-bottom:14px;

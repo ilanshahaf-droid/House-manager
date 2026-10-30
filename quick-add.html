@@ -286,7 +286,12 @@ async function loadItemUsage(user){
   }catch(e){ /* suggestions just won't be personalized this session */ }
 }
 
+function myDisplayName(user){
+  const meta = (user && user.user_metadata) || {};
+  return (meta.display_name || ((user && user.email)||'').split('@')[0] || '').trim();
+}
 function norm(s){ return (s||'').trim().replace(/\s+/g,' '); }
+function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function renderLogin(prefillStatus){
   appEl.innerHTML = `
@@ -299,7 +304,7 @@ function renderLogin(prefillStatus){
         <button id="loginBtn">התחברות</button>
       </div>
     </div>
-    <div class="status" id="status">${prefillStatus||''}</div>
+    <div class="status" id="status">${esc(prefillStatus||'')}</div>
   `;
   document.getElementById('loginBtn').onclick = async ()=>{
     const email = norm(document.getElementById('email').value);
@@ -329,7 +334,7 @@ async function renderAddScreen(user, row){
   const { lists, key } = pickTargetList(row.payload);
   appEl.innerHTML = `
     <h1>הוספה מהירה</h1>
-    <div class="list-name">מוסיפים אל: ${lists[key].name || 'רשימה ראשית'} (${user.email})</div>
+    <div class="list-name">מוסיפים אל: ${esc(lists[key].name || 'רשימה ראשית')} (${esc(user.email)})</div>
     <div class="add-row">
       <input type="text" id="itemInput" placeholder="מה להוסיף?" autofocus>
       <input type="text" id="itemQtyInput" placeholder="כמות" style="flex:0 1 90px;">
@@ -374,11 +379,11 @@ async function renderAddScreen(user, row){
       const isBought = bought.includes(name);
       const qty = quantities[name];
       return `
-        <div class="list-row${isBought?' bought':''}" data-name="${name}">
-          <button type="button" class="list-check" data-action="toggle" data-name="${name}">${isBought?'✓':''}</button>
-          <span class="list-item-name" data-action="toggle" data-name="${name}">${name}${qty?` <span class="list-item-qty">(${qty})</span>`:''}</span>
-          <button type="button" class="list-qty-btn" data-action="qty" data-name="${name}">${qty?'✎':'+כמות'}</button>
-          <button type="button" class="list-del" data-action="del" data-name="${name}">×</button>
+        <div class="list-row${isBought?' bought':''}" data-name="${esc(name)}">
+          <button type="button" class="list-check" data-action="toggle" data-name="${esc(name)}">${isBought?'✓':''}</button>
+          <span class="list-item-name" data-action="toggle" data-name="${esc(name)}">${esc(name)}${qty?` <span class="list-item-qty">(${esc(qty)})</span>`:''}</span>
+          <button type="button" class="list-qty-btn" data-action="qty" data-name="${esc(name)}">${qty?'✎':'+כמות'}</button>
+          <button type="button" class="list-del" data-action="del" data-name="${esc(name)}">×</button>
         </div>`;
     }).join('');
     el.querySelectorAll('[data-action="toggle"]').forEach(elm=>{
@@ -393,8 +398,8 @@ async function renderAddScreen(user, row){
         const row = btn.closest('.list-row');
         const current = quantities[name] || '';
         row.innerHTML = `
-          <span class="list-item-name" style="flex:none; font-weight:600;">${name}</span>
-          <input type="text" class="qty-inline-input" value="${current.replace(/"/g,'&quot;')}" placeholder="כמות">
+          <span class="list-item-name" style="flex:none; font-weight:600;">${esc(name)}</span>
+          <input type="text" class="qty-inline-input" value="${esc(current)}" placeholder="כמות">
           <button type="button" class="list-qty-save">✓</button>
         `;
         const inp = row.querySelector('.qty-inline-input');
@@ -434,7 +439,7 @@ async function renderAddScreen(user, row){
       .sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0],'he'))
       .slice(0,24)
       .map(([name])=>name);
-    grid.innerHTML = pool.map(name=>`<button type="button" class="freq-chip" data-name="${name}">${name}</button>`).join('');
+    grid.innerHTML = pool.map(name=>`<button type="button" class="freq-chip" data-name="${esc(name)}">${esc(name)}</button>`).join('');
     grid.querySelectorAll('.freq-chip').forEach(chip=>{
       chip.onclick = ()=> addItem(chip.dataset.name, false);
     });
@@ -451,7 +456,7 @@ async function renderAddScreen(user, row){
     const alreadySet = new Set(already);
     const rest = getSuggestions(q).filter(n=>!alreadySet.has(n));
     const sugg = [...already.map(n=>({name:n, already:true})), ...rest.map(n=>({name:n, already:false}))].slice(0,8);
-    ac.innerHTML = sugg.map(s=>`<button type="button" class="ac-chip${s.already?' ac-already':''}" data-name="${s.name}">${s.already?'✓ ':''}${s.name}</button>`).join('');
+    ac.innerHTML = sugg.map(s=>`<button type="button" class="ac-chip${s.already?' ac-already':''}" data-name="${esc(s.name)}">${s.already?'✓ ':''}${esc(s.name)}</button>`).join('');
     ac.querySelectorAll('.ac-chip').forEach(chip=>{
       chip.onclick = ()=>{
         input.value = chip.dataset.name;
@@ -463,7 +468,7 @@ async function renderAddScreen(user, row){
   input.addEventListener('input', renderAutocomplete);
 
   // Fetches the current row fresh, lets `mutator` change freshLists[freshKey] in place, then saves.
-  async function mutateAndSave(mutator, busyMsg){
+  async function mutateAndSave(mutator, busyMsg, attempt){
     status.className = 'status';
     status.textContent = busyMsg;
     try{
@@ -474,11 +479,18 @@ async function renderAddScreen(user, row){
       if(!freshLists[freshKey].bought) freshLists[freshKey].bought = [];
       if(!freshLists[freshKey].quantities) freshLists[freshKey].quantities = {};
       mutator(freshLists, freshKey);
-      const { error: updateErr } = await sbClient.from('user_data').update({
-        payload: freshLists,
-        updated_at: new Date().toISOString()
-      }).eq('id', row.id);
+      // Write only if nobody saved in between (compare-and-swap on updated_at); otherwise retry on the newer copy.
+      const stamp = new Date(Math.max(Date.now(), (Date.parse(fresh.updated_at||'')||0) + 1)).toISOString();
+      let q = sbClient.from('user_data').update({ payload: freshLists, updated_at: stamp }).eq('id', row.id);
+      q = fresh.updated_at ? q.eq('updated_at', fresh.updated_at) : q.is('updated_at', null);
+      const { data: upd, error: updateErr } = await q.select('updated_at');
       if(updateErr) throw updateErr;
+      if(!upd || !upd.length){
+        const { data: again } = await sbClient.from('user_data').select('updated_at').eq('id', row.id).single();
+        if(again && again.updated_at !== fresh.updated_at && (attempt||0) < 3) return mutateAndSave(mutator, busyMsg, (attempt||0) + 1);
+        const r2 = await sbClient.from('user_data').update({ payload: freshLists, updated_at: stamp }).eq('id', row.id);
+        if(r2.error) throw r2.error;
+      }
       row.payload = freshLists;
       renderListItems(freshLists[freshKey]);
       renderFrequentGrid(freshLists[freshKey].items);
@@ -497,7 +509,11 @@ async function renderAddScreen(user, row){
     const qty = qtyInput ? norm(qtyInput.value) : '';
     input.disabled = true;
     const ok = await mutateAndSave((freshLists, freshKey)=>{
-      if(!freshLists[freshKey].items.includes(val)) freshLists[freshKey].items.push(val);
+      if(!freshLists[freshKey].items.includes(val)){
+        freshLists[freshKey].items.push(val);
+        if(!freshLists[freshKey].addedBy) freshLists[freshKey].addedBy = {};
+        freshLists[freshKey].addedBy[val] = { n: myDisplayName(user), e: user.email };
+      }
       freshLists[freshKey].bought = freshLists[freshKey].bought.filter(i=>i!==val);
       if(qty) freshLists[freshKey].quantities[val] = qty; else delete freshLists[freshKey].quantities[val];
     }, 'שומרים...');
@@ -528,6 +544,8 @@ async function renderAddScreen(user, row){
       freshLists[freshKey].items = freshLists[freshKey].items.filter(i=>i!==name);
       freshLists[freshKey].bought = freshLists[freshKey].bought.filter(i=>i!==name);
       delete freshLists[freshKey].quantities[name];
+      if(freshLists[freshKey].notes) delete freshLists[freshKey].notes[name];
+      if(freshLists[freshKey].addedBy) delete freshLists[freshKey].addedBy[name];
     }, '');
     status.textContent = '';
   }
@@ -545,6 +563,7 @@ async function renderAddScreen(user, row){
       const bought = freshLists[freshKey].bought || [];
       freshLists[freshKey].items = freshLists[freshKey].items.filter(i=>!bought.includes(i));
       freshLists[freshKey].bought = [];
+      ['quantities','notes','addedBy'].forEach(m=>{ const o = freshLists[freshKey][m]; if(o) bought.forEach(i=>{ delete o[i]; }); });
     }, '');
     status.textContent = '';
   }
@@ -597,7 +616,17 @@ async function start(){
   try{
     const { data: rows, error } = await sbClient.from('user_data').select('*').eq('kind','shopping_lists');
     if(error) throw error;
-    let row = (rows||[]).find(r=>r.owner_id===user.id) || (rows||[])[0];
+    // Same choice as the main app: the household's shared list first, then your own personal list.
+    let hid = null;
+    try{
+      const { data: mem, error: memErr } = await sbClient.from('household_members').select('household_id').eq('user_id', user.id).maybeSingle();
+      if(!memErr && mem) hid = mem.household_id;
+    }catch(e){ /* households not set up — personal mode */ }
+    const all = rows || [];
+    let row = (hid && all.find(r=>r.household_id === hid))
+      || all.find(r=>r.owner_id===user.id && !r.household_id)
+      || all.find(r=>r.owner_id===user.id)
+      || all[0];
     if(!row){
       const { data: created, error: insErr } = await sbClient.from('user_data').insert({
         owner_id: user.id, owner_email: user.email, kind:'shopping_lists',
@@ -609,7 +638,7 @@ async function start(){
     await loadItemUsage(user);
     await renderAddScreen(user, row);
   }catch(e){
-    appEl.innerHTML = `<h1>הוספה מהירה</h1><div class="status err">שגיאה בטעינה: ${e.message||''}</div>`;
+    appEl.innerHTML = `<h1>הוספה מהירה</h1><div class="status err">שגיאה בטעינה: ${esc(e.message||'')}</div>`;
   }
 }
 

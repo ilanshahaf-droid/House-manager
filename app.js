@@ -144,6 +144,7 @@ function applyAppStateRow(row){
   autoResetEnabled = !!p.autoResetEnabled;
   protectedCategories = p.protectedCategories || ["מזווה","תיבול ואפייה"];
   recipeOverrides = p.recipeOverrides || {};
+  Object.keys(weeklyPlan).forEach(day=>{ if(typeof weeklyPlan[day] === 'string') weeklyPlan[day] = weeklyPlan[day] ? [weeklyPlan[day]] : []; });
   localStorage.setItem('fridge_items', JSON.stringify([...fridge]));
   localStorage.setItem('fridge_expiry', JSON.stringify(fridgeExpiry));
   localStorage.setItem('cooked_recipes', JSON.stringify([...cookedSet]));
@@ -157,6 +158,7 @@ function applyAppStateRow(row){
   localStorage.setItem('protected_categories', JSON.stringify(protectedCategories));
   localStorage.setItem('recipe_overrides', JSON.stringify(recipeOverrides));
   applyRecipeOverrides();
+  migrateRenamedRecipes();
 }
 async function pushAppState(){
   if(!currentUser || !activeStateRowId || !sbClient) return;
@@ -212,10 +214,82 @@ async function fetchUserDataRows(kind){
   return data || [];
 }
 let shoppingRealtimeChannel = null;
-// Tracks the updated_at of the shopping data we last knew to be current (from a push we made or
-// a realtime event we applied) — guards against an older, out-of-order realtime echo reverting
-// a newer local change (e.g. rapid taps firing overlapping update requests out of commit order).
+// updated_at of the newest server copy of the shopping row we know about (server-confirmed only).
+// Compared numerically — server and client format timestamps differently, so string compare is unsafe.
 let lastShoppingUpdatedAt = null;
+// "Base" = the last server copy our local data was built on. With it, a 3-way merge can tell what *we*
+// changed from what *others* changed, so edits made on two phones at once are combined instead of one
+// overwriting the other.
+let shoppingBase = null;
+function cloneJSON(o){ return JSON.parse(JSON.stringify(o == null ? {} : o)); }
+function tsOf(v){ const t = Date.parse(v || ''); return isNaN(t) ? 0 : t; }
+// Always strictly later than the copy we merged onto, even if this phone's clock runs behind.
+function nextStamp(prev){ return new Date(Math.max(Date.now(), tsOf(prev) + 1)).toISOString(); }
+function setShoppingBase(obj, rowId){
+  shoppingBase = cloneJSON(obj);
+  try{ localStorage.setItem('shopping_base_' + (rowId || activeShoppingRowId), JSON.stringify(shoppingBase)); }catch(e){}
+}
+function mergeArr(b, l, s){
+  const B = new Set(b || []), L = new Set(l || []);
+  const removed = new Set((b || []).filter(x=>!L.has(x)));
+  const res = (s || []).filter(x=>!removed.has(x));
+  (l || []).forEach(x=>{ if(!B.has(x) && !res.includes(x)) res.push(x); });
+  return res;
+}
+function mergeMap(b, l, s){
+  b = b || {}; l = l || {};
+  const res = Object.assign({}, s || {});
+  new Set([...Object.keys(b), ...Object.keys(l)]).forEach(k=>{
+    if(JSON.stringify(l[k]) !== JSON.stringify(b[k])){
+      if(l[k] === undefined) delete res[k]; else res[k] = l[k];
+    }
+  });
+  return res;
+}
+function mergeOneList(b, l, s){
+  const res = cloneJSON(s);
+  Object.keys(l).forEach(k=>{
+    if(['items','bought','quantities','notes','addedBy'].includes(k)) return;
+    if(JSON.stringify(l[k]) !== JSON.stringify(b[k])) res[k] = cloneJSON(l[k]);
+  });
+  res.items = mergeArr(b.items, l.items, s.items);
+  const inList = new Set(res.items);
+  res.bought = mergeArr(b.bought, l.bought, s.bought).filter(i=>inList.has(i));
+  ['quantities','notes','addedBy'].forEach(m=>{
+    if(!l[m] && !s[m] && !b[m]) return;
+    const merged = mergeMap(b[m], l[m], s[m]);
+    Object.keys(merged).forEach(k=>{ if(!inList.has(k)) delete merged[k]; });
+    res[m] = merged;
+  });
+  return res;
+}
+// base = common ancestor, local = this device, server = latest stored copy
+function mergeShoppingLists(base, local, server){
+  base = base || {}; local = local || {}; server = server || {};
+  const out = {};
+  new Set([...Object.keys(server), ...Object.keys(local)]).forEach(id=>{
+    const b = base[id], l = local[id], sv = server[id];
+    if(!l){ if(!b) out[id] = cloneJSON(sv); return; }          // missing here: new elsewhere → keep; was here before → we deleted it
+    if(!sv){ if(!b) out[id] = cloneJSON(l); return; }          // missing on server: new here → keep; existed before → deleted elsewhere
+    out[id] = mergeOneList(b || {}, l, sv);
+  });
+  if(!Object.keys(out).length) out.main = { name:'רשימה ראשית', items:[], bought:[] };
+  return out;
+}
+// Copy the live Sets (what the UI edits) back into the lists object before merging.
+function syncLiveSetsIntoList(){
+  const l = shoppingLists[activeListId];
+  if(l){ l.items = [...shoppingList]; l.bought = [...boughtItems]; }
+}
+function adoptShoppingLists(next){
+  shoppingLists = (next && Object.keys(next).length) ? next : { main:{ name:'רשימה ראשית', items:[], bought:[], syncCode:null } };
+  if(!shoppingLists[activeListId]) activeListId = shoppingLists.main ? 'main' : Object.keys(shoppingLists)[0];
+  localStorage.setItem('shopping_lists', JSON.stringify(shoppingLists));
+  localStorage.setItem('active_shopping_list', activeListId);
+  shoppingList = new Set(getActiveList().items||[]);
+  boughtItems = new Set(getActiveList().bought||[]);
+  syncCode = getActiveList().syncCode || null;
+}
 function subscribeShoppingRealtime(rowId){
   if(shoppingRealtimeChannel){ sbClient.removeChannel(shoppingRealtimeChannel); shoppingRealtimeChannel = null; }
   if(!rowId || !sbClient) return;
@@ -223,17 +297,19 @@ function subscribeShoppingRealtime(rowId){
     .channel('shopping_row_' + rowId)
     .on('postgres_changes', { event:'UPDATE', schema:'public', table:'user_data', filter:`id=eq.${rowId}` }, (payload)=>{
       const newRow = payload.new;
-      if(!newRow) return;
-      if(newRow.updated_at && lastShoppingUpdatedAt && newRow.updated_at <= lastShoppingUpdatedAt) return;
-      lastShoppingUpdatedAt = newRow.updated_at || lastShoppingUpdatedAt;
-      const listsBefore = shoppingLists;
-      shoppingLists = (newRow.payload && Object.keys(newRow.payload).length) ? newRow.payload : shoppingLists;
-      noticeAddedByOthers(listsBefore, shoppingLists);
-      if(!shoppingLists[activeListId]) activeListId = Object.keys(shoppingLists)[0];
-      localStorage.setItem('shopping_lists', JSON.stringify(shoppingLists));
-      localStorage.setItem('active_shopping_list', activeListId);
-      shoppingList = new Set(getActiveList().items||[]);
-      boughtItems = new Set(getActiveList().bought||[]);
+      if(!newRow || rowId !== activeShoppingRowId) return;
+      if(newRow.updated_at && lastShoppingUpdatedAt && tsOf(newRow.updated_at) <= tsOf(lastShoppingUpdatedAt)) return;   // older / already-seen copy
+      if(newRow.updated_at) lastShoppingUpdatedAt = newRow.updated_at;
+      const remote = (newRow.payload && Object.keys(newRow.payload).length) ? newRow.payload : null;
+      if(!remote) return;
+      const listsBefore = cloneJSON(shoppingLists);
+      syncLiveSetsIntoList();
+      const busy = shoppingPushPending || shoppingPushInFlight;
+      // Unsent local edits are kept on top of the incoming copy instead of being thrown away.
+      const next = busy ? mergeShoppingLists(shoppingBase || remote, shoppingLists, remote) : cloneJSON(remote);
+      setShoppingBase(remote, rowId);
+      noticeAddedByOthers(listsBefore, next);
+      adoptShoppingLists(next);
       renderShoppingPanel();
       renderTabBadges();
       if(shoppingModeActive) renderShoppingModeList();
@@ -241,16 +317,29 @@ function subscribeShoppingRealtime(rowId){
     .subscribe();
 }
 function applyShoppingRow(row){
+  const prevRowId = localStorage.getItem('active_shopping_row');
+  const server = (row.payload && Object.keys(row.payload).length) ? row.payload : {main:{name:'רשימה ראשית', items:[], bought:[], syncCode:null}};
+  // Edits made on this phone while offline (or right before closing the app) are still in localStorage.
+  // If they were built on a known copy of THIS row, merge them in rather than discarding them.
+  let next = cloneJSON(server);
+  let hadOfflineEdits = false;
+  if(prevRowId === row.id){
+    try{
+      const savedBase = localStorage.getItem('shopping_base_' + row.id);
+      const localNow = localStorage.getItem('shopping_lists');
+      if(savedBase && localNow && savedBase !== localNow){
+        next = mergeShoppingLists(JSON.parse(savedBase), JSON.parse(localNow), server);
+        hadOfflineEdits = JSON.stringify(next) !== JSON.stringify(server);
+      }
+    }catch(e){}
+  }
   activeShoppingRowId = row.id;
-  lastShoppingUpdatedAt = row.updated_at || lastShoppingUpdatedAt;
+  lastShoppingUpdatedAt = row.updated_at || null;
   localStorage.setItem('active_shopping_row', row.id);
-  shoppingLists = (row.payload && Object.keys(row.payload).length) ? row.payload : {main:{name:'רשימה ראשית', items:[], bought:[], syncCode:null}};
-  if(!shoppingLists[activeListId]) activeListId = shoppingLists.main ? 'main' : Object.keys(shoppingLists)[0];
-  localStorage.setItem('shopping_lists', JSON.stringify(shoppingLists));
-  localStorage.setItem('active_shopping_list', activeListId);
-  shoppingList = new Set(getActiveList().items||[]);
-  boughtItems = new Set(getActiveList().bought||[]);
+  setShoppingBase(server, row.id);
+  adoptShoppingLists(next);
   subscribeShoppingRealtime(row.id);
+  if(hadOfflineEdits) scheduleShoppingPush();
 }
 function applyRecipesRow(row){
   activeRecipesRowId = row.id;
@@ -330,18 +419,69 @@ async function loadAccountData(){
   renderAll();
   refreshPushRegistration();
 }
+let shoppingPushTimer = null;
+let shoppingPushPending = false;    // local edits not yet sent — a refresh must not overwrite them
+let shoppingPushInFlight = false;
+let shoppingPushAgain = false;
+// Read the latest server copy → 3-way merge with our edits → write back only if nobody wrote in between
+// (compare-and-swap on updated_at). If someone did, start over from their newer copy.
 async function pushShoppingRow(){
   if(!currentUser || !activeShoppingRowId || !sbClient) return;
-  const stamp = new Date().toISOString();
-  lastShoppingUpdatedAt = stamp; // claim this moment now, so an out-of-order older echo can't win
-  shoppingPushPending = false;
   clearTimeout(shoppingPushTimer);
+  if(shoppingPushInFlight){ shoppingPushAgain = true; return; }
+  shoppingPushInFlight = true;
+  const rowId = activeShoppingRowId;
+  let ok = false;
   try{
-    await sbClient.from('user_data').update({payload: shoppingLists, updated_at: stamp}).eq('id', activeShoppingRowId);
-  }catch(e){ /* offline — local copy is already saved */ }
+    for(let attempt = 0; attempt < 4 && !ok; attempt++){
+      shoppingPushPending = false;
+      syncLiveSetsIntoList();
+      const sent = cloneJSON(shoppingLists);
+      const sentBase = shoppingBase ? cloneJSON(shoppingBase) : null;   // the base must be captured together with the snapshot
+      const { data: srv, error } = await sbClient.from('user_data').select('payload, updated_at').eq('id', rowId).single();
+      if(error || !srv) throw (error || new Error('row not found'));
+      if(rowId !== activeShoppingRowId) return;
+      const serverLists = (srv.payload && Object.keys(srv.payload).length) ? srv.payload : {};
+      const merged = mergeShoppingLists(sentBase || serverLists, sent, serverLists);
+      const stamp = nextStamp(srv.updated_at);
+      let q = sbClient.from('user_data').update({ payload: merged, updated_at: stamp }).eq('id', rowId);
+      q = srv.updated_at ? q.eq('updated_at', srv.updated_at) : q.is('updated_at', null);
+      let { data: upd, error: e2 } = await q.select('updated_at');
+      if(e2) throw e2;
+      if(!upd || !upd.length){
+        // Nothing updated: either someone else wrote first (retry from their copy), or the timestamp
+        // filter didn't match for a technical reason. If the row is unchanged, write without the filter.
+        const { data: again } = await sbClient.from('user_data').select('updated_at').eq('id', rowId).single();
+        if(again && again.updated_at === srv.updated_at){
+          const r2 = await sbClient.from('user_data').update({ payload: merged, updated_at: stamp }).eq('id', rowId).select('updated_at');
+          if(r2.error) throw r2.error;
+          upd = r2.data;
+        }
+      }
+      if(rowId !== activeShoppingRowId) return;
+      if(upd && upd.length){
+        ok = true;
+        lastShoppingUpdatedAt = upd[0].updated_at || stamp;
+        setShoppingBase(merged, rowId);
+        syncLiveSetsIntoList();
+        const before = JSON.stringify(shoppingLists);
+        // keep anything edited while the request was travelling
+        const next = mergeShoppingLists(sent, shoppingLists, merged);
+        adoptShoppingLists(next);
+        if(JSON.stringify(shoppingLists) !== before){
+          renderShoppingPanel(); renderTabBadges();
+          if(shoppingModeActive) renderShoppingModeList();
+        }
+      }
+    }
+    if(!ok) shoppingPushPending = true;
+  }catch(e){
+    shoppingPushPending = true;   // offline — local copy is saved; we'll retry on the next edit / when the app regains focus
+  }finally{
+    shoppingPushInFlight = false;
+    if(shoppingPushAgain || (ok && shoppingPushPending)){ shoppingPushAgain = false; scheduleShoppingPush(); }
+  }
 }
-let shoppingPushTimer = null;
-let shoppingPushPending = false;   // local edits not yet sent — a refresh must not overwrite them
 function scheduleShoppingPush(){
   if(!currentUser || !activeShoppingRowId) return;
   shoppingPushPending = true;
@@ -350,15 +490,21 @@ function scheduleShoppingPush(){
 }
 async function refreshShoppingRowFromAccount(){
   if(!currentUser || !activeShoppingRowId || !sbClient) return;
-  if(shoppingPushPending){ pushShoppingRow(); return; }   // send our unsent edits first; never overwrite them with an older server copy
+  if(shoppingPushPending || shoppingPushInFlight){ pushShoppingRow(); return; }   // the push itself merges in the latest server copy
+  const rowId = activeShoppingRowId;
   try{
-    const { data, error } = await sbClient.from('user_data').select('*').eq('id', activeShoppingRowId).single();
-    if(error || !data) return;
-    if(shoppingPushPending) return;                       // an edit happened while we were fetching
-    if(data.updated_at && lastShoppingUpdatedAt && data.updated_at < lastShoppingUpdatedAt) return;   // server copy is older than what we hold
-    applyShoppingRow(data);
+    const { data, error } = await sbClient.from('user_data').select('*').eq('id', rowId).single();
+    if(error || !data || rowId !== activeShoppingRowId) return;
+    if(shoppingPushPending || shoppingPushInFlight) return;                       // an edit happened while we were fetching
+    if(data.updated_at && lastShoppingUpdatedAt && tsOf(data.updated_at) < tsOf(lastShoppingUpdatedAt)) return;
+    lastShoppingUpdatedAt = data.updated_at || lastShoppingUpdatedAt;
+    const remote = (data.payload && Object.keys(data.payload).length) ? data.payload : null;
+    if(!remote) return;
+    setShoppingBase(remote, rowId);
+    adoptShoppingLists(cloneJSON(remote));
     renderShoppingPanel();
     renderTabBadges();
+    if(shoppingModeActive) renderShoppingModeList();
   }catch(e){ /* offline — keep showing local copy */ }
 }
 async function pushRecipesRow(){
@@ -430,14 +576,14 @@ function renderHouseholdBox(){
   const missing = householdMissingKinds();
   el.innerHTML = `
     <div class="household-card">
-      <div class="household-title">משק בית: ${myHousehold.name}</div>
+      <div class="household-title">משק בית: ${escHtml(myHousehold.name)}</div>
       <div class="household-members">
         ${householdMembers.map(m=>`
           <div class="household-member">
-            <span dir="ltr">${m.email}</span>
+            <span dir="ltr">${escHtml(m.email)}</span>
             <span class="household-role">${m.role==='admin'?'מנהל/ת':''}</span>
             ${(isAdmin && m.user_id !== currentUser.id) || (m.user_id === currentUser.id && !(isAdmin && householdMembers.length>1))
-              ? `<button type="button" class="unshare-btn household-remove" data-email="${m.email}" data-self="${m.user_id===currentUser.id?'1':''}" aria-label="${m.user_id===currentUser.id?'עזיבת משק הבית':'הסרה ממשק הבית'}">×</button>` : ''}
+              ? `<button type="button" class="unshare-btn household-remove" data-email="${escAttr(m.email)}" data-self="${m.user_id===currentUser.id?'1':''}" aria-label="${m.user_id===currentUser.id?'עזיבת משק הבית':'הסרה ממשק הבית'}">×</button>` : ''}
           </div>`).join('')}
       </div>
       ${isAdmin ? `
@@ -506,7 +652,7 @@ function paintSharedList(containerId, rowId){
   if(!el) return;
   const row = ownerOfRow(rowId);
   if(row && currentUser && row.owner_id !== currentUser.id){
-    el.innerHTML = `<div class="shared-list-note">זה מידע ששותף איתכם על ידי ${row.owner_email} — רק הבעלים רואה עם מי הוא משותף.</div>`;
+    el.innerHTML = `<div class="shared-list-note">זה מידע ששותף איתכם על ידי ${escHtml(row.owner_email)} — רק הבעלים רואה עם מי הוא משותף.</div>`;
     return;
   }
   const c = sharedEmailsCache[rowId];
@@ -517,8 +663,8 @@ function paintSharedList(containerId, rowId){
     <div class="shared-list-title">משותף עם (${c.emails.length}):</div>
     <div class="shared-list">${c.emails.map(e=>`
       <div class="shared-list-row">
-        <span dir="ltr">${e}</span>
-        <button type="button" class="unshare-btn" data-email="${e}" aria-label="ביטול שיתוף עם ${e}">×</button>
+        <span dir="ltr">${escHtml(e)}</span>
+        <button type="button" class="unshare-btn" data-email="${escAttr(e)}" aria-label="ביטול שיתוף עם ${escAttr(e)}">×</button>
       </div>`).join('')}</div>`;
   el.querySelectorAll('.unshare-btn').forEach(btn=>{
     btn.onclick = ()=>{
@@ -547,7 +693,7 @@ async function renderSharedList(containerId, rowId, force){
   sharedEmailsPending[rowId] = true;
   try{
     const { data, error } = await sbClient.rpc('get_shared_emails', {row_id: rowId});
-    sharedEmailsCache[rowId] = error ? {error:true, emails:[]} : {error:false, emails:(data||[])};
+    sharedEmailsCache[rowId] = error ? {error:true, emails:[]} : {error:false, emails:(Array.isArray(data) ? data : [])};
   }catch(e){
     sharedEmailsCache[rowId] = {error:true, emails:[]};
   }
@@ -559,6 +705,7 @@ async function doLogout(){
   await sbClient.auth.signOut();
   subscribeShoppingRealtime(null);
   currentUser = null;
+  shoppingBase = null; lastShoppingUpdatedAt = null; shoppingPushPending = false;
   activeShoppingRowId = null;
   activeRecipesRowId = null;
   activeStateRowId = null;
@@ -633,27 +780,27 @@ function renderAccountBox(){
     <div class="acct-picker">
       <div class="settings-hint" style="font-weight:700;margin-bottom:4px;">איזו רשימת קניות להציג:</div>
       <select id="shopRowPicker" class="week-select">
-        ${accountShoppingRows.map(r=>`<option value="${r.id}" ${r.id===activeShoppingRowId?'selected':''}>${rowLabel(r)}</option>`).join('')}
+        ${accountShoppingRows.map(r=>`<option value="${r.id}" ${r.id===activeShoppingRowId?'selected':''}>${escHtml(rowLabel(r))}</option>`).join('')}
       </select>
     </div>` : '';
   const recPicker = accountRecipeRows.length>1 ? `
     <div class="acct-picker">
       <div class="settings-hint" style="font-weight:700;margin-bottom:4px;">אילו מתכונים להציג:</div>
       <select id="recRowPicker" class="week-select">
-        ${accountRecipeRows.map(r=>`<option value="${r.id}" ${r.id===activeRecipesRowId?'selected':''}>${rowLabel(r)}</option>`).join('')}
+        ${accountRecipeRows.map(r=>`<option value="${r.id}" ${r.id===activeRecipesRowId?'selected':''}>${escHtml(rowLabel(r))}</option>`).join('')}
       </select>
     </div>` : '';
   const statePicker = accountStateRows.length>1 ? `
     <div class="acct-picker">
       <div class="settings-hint" style="font-weight:700;margin-bottom:4px;">איזה מקרר ונתונים נוספים להציג:</div>
       <select id="stateRowPicker" class="week-select">
-        ${accountStateRows.map(r=>`<option value="${r.id}" ${r.id===activeStateRowId?'selected':''}>${rowLabel(r)}</option>`).join('')}
+        ${accountStateRows.map(r=>`<option value="${r.id}" ${r.id===activeStateRowId?'selected':''}>${escHtml(rowLabel(r))}</option>`).join('')}
       </select>
     </div>` : '';
   el.innerHTML = `
     <div class="sync-box">
       <div class="sync-row">
-        <span class="sync-status">✓ מחוברים כ-<b>${currentUser.email}</b></span>
+        <span class="sync-status">✓ מחוברים כ-<b>${escHtml(currentUser.email)}</b></span>
         <button id="acctLogoutBtn">התנתקות</button>
       </div>
       <div id="householdBox"></div>
@@ -788,7 +935,7 @@ function renderAutocomplete(containerId, query, onPick, listItems){
   const rest = getSuggestions(q).filter(s=>!alreadyNames.has(s.name)).map(s=>({name:s.name, already:false}));
   const sugg = [...already, ...rest].slice(0,8);
   if(sugg.length===0){ el.innerHTML=''; return; }
-  el.innerHTML = sugg.map(s=>`<button type="button" class="ac-chip${s.already?' ac-already':''}" data-name="${s.name}">${s.already?'✓ ':''}${s.name}</button>`).join('');
+  el.innerHTML = sugg.map(s=>`<button type="button" class="ac-chip${s.already?' ac-already':''}" data-name="${escAttr(s.name)}">${s.already?'✓ ':''}${escHtml(s.name)}</button>`).join('');
   el.querySelectorAll('.ac-chip').forEach(chip=>{
     chip.onclick = ()=> onPick(chip.dataset.name);
   });
@@ -1637,7 +1784,7 @@ let clearByCatOpen = false;
 function renderFridgeStrip(){
   const wrap = document.getElementById('fridgeSummaryWrap');
   const catCheckboxes = allCategoryNames().concat(['אחר']).map(cat=>`
-    <label class="clearcat-item"><input type="checkbox" value="${cat}"> ${cat}</label>
+    <label class="clearcat-item"><input type="checkbox" value="${escAttr(cat)}"> ${escHtml(cat)}</label>
   `).join('');
   const clearCatPanel = `
     <div class="clearcat-panel${clearByCatOpen?' open':''}" id="clearCatPanel">
@@ -1655,8 +1802,8 @@ function renderFridgeStrip(){
   let expiryAlert = '';
   if(expiredItems.length || soonItems.length){
     const parts = [];
-    if(expiredItems.length) parts.push(`<b>${expiredItems.length} פגו:</b> ${expiredItems.join(', ')}`);
-    if(soonItems.length) parts.push(`<b>${soonItems.length} עומדים לפוג:</b> ${soonItems.join(', ')}`);
+    if(expiredItems.length) parts.push(`<b>${expiredItems.length} פגו:</b> ${expiredItems.map(escHtml).join(', ')}`);
+    if(soonItems.length) parts.push(`<b>${soonItems.length} עומדים לפוג:</b> ${soonItems.map(escHtml).join(', ')}`);
     expiryAlert = `<div class="expiry-alert${expiredItems.length?' has-expired':''}">${parts.join(' · ')}</div>`;
   }
 
@@ -1682,7 +1829,7 @@ function renderFridgeStrip(){
     chip.className = 'chip' + (status==='expired' ? ' exp-expired' : status==='soon' ? ' exp-soon' : '');
     const d = fridgeExpiry[item] ? daysUntil(fridgeExpiry[item]) : null;
     const dateLabel = d===null ? '' : d<0 ? ` (פג לפני ${-d} ימים)` : d===0 ? ' (פג היום)' : ` (עוד ${d} ימים)`;
-    chip.innerHTML = `<button class="chip-cal" aria-label="תאריך תפוגה">📅</button>${item}${dateLabel} <button aria-label="הסרה">×</button>`;
+    chip.innerHTML = `<button class="chip-cal" aria-label="תאריך תפוגה">📅</button>${escHtml(item)}${dateLabel} <button aria-label="הסרה">×</button>`;
     chip.querySelector('.chip-cal').onclick = (e)=>{
       e.stopPropagation();
       showDateModal(`תאריך תפוגה עבור "${item}":`, (dateStr)=>{
@@ -1797,7 +1944,7 @@ function renderItemGrid(){
   const addRow = document.createElement('div');
   addRow.className = 'cat-add-row';
   addRow.innerHTML = `
-    <input type="text" placeholder="הוסיפו מצרך חדש ל-${activeCat}...">
+    <input type="text" placeholder="הוסיפו מצרך חדש ל-${escAttr(activeCat)}...">
     <button>+</button>
   `;
   const input = addRow.querySelector('input');
@@ -1957,7 +2104,7 @@ function suggestAlternative(base){
   const missing = best._names.filter(i=>!fridge.has(i));
   const msg = `הצעה: «${best.name}»\nהתאמה: ${best.have}/${best._names.length} מצרכים\nזמן: ${best.time}` +
     (missing.length ? `\nחסר: ${missing.join(', ')}` : '\nיש לכם הכל!');
-  if(confirm(msg + '\n\nלפתוח את המתכון?')){
+  showConfirmModal(msg + '\n\nלפתוח את המתכון?', ()=>{
     filters.search = best.name;
     document.getElementById('searchInput').value = best.name;
     renderRecipes();
@@ -1971,7 +2118,7 @@ function suggestAlternative(base){
         }
       });
     }, 100);
-  }
+  });
 }
 
 function cardActionsHTML(r, missing){
@@ -2142,19 +2289,19 @@ function renderRecipes(){
     const usesExpiring = r.have.some(i=>{ const s = expiryStatus(i); return s==='soon' || s==='expired'; });
     card.innerHTML = `
       <div class="recipe-head">
-        <h3>${isFav?'★ ':''}${r.name}</h3>
+        <h3>${isFav?'★ ':''}${escHtml(r.name)}</h3>
         ${fridge.size>0 ? `<span class="match-frac ${isFull?'match-full':'match-partial'}">${r.haveCount}/${r.total} מצרכים</span>` : ''}
       </div>
-      <div class="recipe-meta">${r.time}${isFull? ' · יש לכם הכל' : ''}${cooked? ' · <span class="cooked-badge">✓ בישלתם</span>' : ''}${usesExpiring? ' · <span class="expiring-badge">♻️ מנצל מה שעומד לפוג</span>' : ''}</div>
+      <div class="recipe-meta">${escHtml(r.time)}${isFull? ' · יש לכם הכל' : ''}${cooked? ' · <span class="cooked-badge">✓ בישלתם</span>' : ''}${usesExpiring? ' · <span class="expiring-badge">♻️ מנצל מה שעומד לפוג</span>' : ''}</div>
       <div class="recipe-tags">
-        <span class="tag">${r.cuisine||'כללי'}</span>
-        <span class="tag">${r.difficulty||'קל'}</span>
+        <span class="tag">${escHtml(r.cuisine||'כללי')}</span>
+        <span class="tag">${escHtml(r.difficulty||'קל')}</span>
         ${r.healthy?'<span class="tag">בריא</span>':''}
       </div>
       ${formatHistory(r.name) ? `<div class="history-line">${formatHistory(r.name)}</div>` : ''}
       ${!isFull && r.missing.length>0 ? `<div class="missing-line">חסר: ${r.missing.map(m=>{
         const subs = (SUBSTITUTES[m]||[]).filter(s=>fridge.has(s));
-        return subs.length ? `${m} <span class="sub-hint">(אפשר: ${subs.join('/')})</span>` : m;
+        return subs.length ? `${escHtml(m)} <span class="sub-hint">(אפשר: ${subs.map(escHtml).join('/')})</span>` : escHtml(m);
       }).join(', ')}</div>` : ''}
       <div class="recipe-body">
         <h4>מצרכים</h4>
@@ -2165,16 +2312,16 @@ function renderRecipes(){
             let extra = '';
             if(!have && SUBSTITUTES[name]){
               const avail = SUBSTITUTES[name].filter(s=>fridge.has(s));
-              if(avail.length) extra = ` → ${avail[0]}`;
+              if(avail.length) extra = ` → ${escHtml(avail[0])}`;
             }
             const qty = ingQty(i);
             return `<span class="ing-pill ${have?'have':'miss'}">${escHtml(name)}${qty?` <span class="ing-qty">(${escHtml(qty)})</span>`:''}${extra}</span>`;
           }).join('')}
         </div>
         <h4>הוראות הכנה</h4>
-        <ol class="steps">${r.steps.map(s=>`<li>${s}</li>`).join('')}</ol>
+        <ol class="steps">${r.steps.map(s=>`<li>${escHtml(s)}</li>`).join('')}</ol>
         ${cardActionsHTML(r, r.missing)}
-        ${!isFull && r.missing.length>0 ? `<button class="action-btn alt-btn" data-alt="${r.name}">💡 הצעו מתכון אלטרנטיבי דומה</button>` : ''}
+        ${!isFull && r.missing.length>0 ? `<button class="action-btn alt-btn" data-alt="${escAttr(r.name)}">💡 הצעו מתכון אלטרנטיבי דומה</button>` : ''}
       </div>
     `;
     card.onclick = ()=> card.classList.toggle('open');
@@ -2202,7 +2349,7 @@ function renderWeekPlan(){
   WEEK_DAYS.forEach(day=>{
     const chosen = weeklyPlan[day] || [];
     const chips = chosen.map(name=>`
-      <span class="week-chip">${name}<button type="button" class="week-chip-x" data-day="${day}" data-name="${name}">×</button></span>
+      <span class="week-chip">${escHtml(name)}<button type="button" class="week-chip-x" data-day="${day}" data-name="${escAttr(name)}">×</button></span>
     `).join('');
     const remaining = options.filter(n=>!chosen.includes(n));
     html += `
@@ -2211,7 +2358,7 @@ function renderWeekPlan(){
         <div class="week-chips">${chips || '<span class="week-empty">— אין מתכון —</span>'}</div>
         <select class="week-select" data-day="${day}">
           <option value="">+ הוסיפו מתכון ליום זה</option>
-          ${remaining.map(name=>`<option value="${name}">${name}</option>`).join('')}
+          ${remaining.map(name=>`<option value="${escAttr(name)}">${escHtml(name)}</option>`).join('')}
         </select>
       </div>`;
   });
@@ -2309,14 +2456,14 @@ function openWeekShopPreview(){
     missing.forEach(e=>{ (groups[e.cat] = groups[e.cat] || []).push(e); });
     const groupHtml = order.filter(c=>groups[c]).map(c=>`
       <div class="wsp-group">
-        <div class="wsp-group-title">${c}${protectedSet.has(c)?' <span class="wsp-note">(מזווה — לא מסומן כברירת מחדל)</span>':''}</div>
+        <div class="wsp-group-title">${escHtml(c)}${protectedSet.has(c)?' <span class="wsp-note">(מזווה — לא מסומן כברירת מחדל)</span>':''}</div>
         ${groups[c].sort((a,b)=>a.ing.localeCompare(b.ing,'he')).map(e=>`
           <label class="wsp-row${e.inList?' wsp-inlist':''}">
-            <input type="checkbox" data-ing="${e.ing}" ${e.inList?'disabled checked':(checked.has(e.ing)?'checked':'')}>
-            <span class="wsp-icon">${iconOf(e.ing)}</span>
+            <input type="checkbox" data-ing="${escAttr(e.ing)}" ${e.inList?'disabled checked':(checked.has(e.ing)?'checked':'')}>
+            <span class="wsp-icon">${escHtml(iconOf(e.ing))}</span>
             <span class="wsp-main">
-              <span class="wsp-name">${e.ing}${e.qty?` <span class="wsp-qty">(${e.qty})</span>`:''}${e.inList?' <span class="wsp-note">✓ כבר ברשימה</span>':''}</span>
-              <span class="wsp-recipes">${e.recipes.join(' · ')}</span>
+              <span class="wsp-name">${escHtml(e.ing)}${e.qty?` <span class="wsp-qty">(${escHtml(e.qty)})</span>`:''}${e.inList?' <span class="wsp-note">✓ כבר ברשימה</span>':''}</span>
+              <span class="wsp-recipes">${e.recipes.map(escHtml).join(' · ')}</span>
             </span>
           </label>`).join('')}
       </div>`).join('');
@@ -2495,11 +2642,11 @@ function renderDailyRecipe(){
   card.className='daily-card recipe-card';
   card.innerHTML = `
     <div class="daily-label">המלצה טעימה ובריאה להיום</div>
-    <h3>${isFav?'★ ':''}${r.name}</h3>
-    <div class="recipe-meta">${r.time}${fridge.size? ` · ${have.length}/${names.length} כבר יש לכם` : ''}${cooked? ' · <span class="cooked-badge">✓ בישלתם</span>' : ''}</div>
+    <h3>${isFav?'★ ':''}${escHtml(r.name)}</h3>
+    <div class="recipe-meta">${escHtml(r.time)}${fridge.size? ` · ${have.length}/${names.length} כבר יש לכם` : ''}${cooked? ' · <span class="cooked-badge">✓ בישלתם</span>' : ''}</div>
     <div class="recipe-tags">
-      <span class="tag">${r.cuisine||'כללי'}</span>
-      <span class="tag">${r.difficulty||'קל'}</span>
+      <span class="tag">${escHtml(r.cuisine||'כללי')}</span>
+      <span class="tag">${escHtml(r.difficulty||'קל')}</span>
     </div>
     ${formatHistory(r.name) ? `<div class="history-line">${formatHistory(r.name)}</div>` : ''}
     <div class="recipe-body">
@@ -2512,7 +2659,7 @@ function renderDailyRecipe(){
         }).join('')}
       </div>
       <h4>הוראות הכנה</h4>
-      <ol class="steps">${r.steps.map(s=>`<li>${s}</li>`).join('')}</ol>
+      <ol class="steps">${r.steps.map(s=>`<li>${escHtml(s)}</li>`).join('')}</ol>
       ${cardActionsHTML(r, missing)}
     </div>
   `;
@@ -2581,7 +2728,7 @@ function renderShoppingPanel(){
 
   catOrder.forEach(cat=>{
     if(!groups[cat] || groups[cat].length===0) return;
-    html += `<div class="shop-group"><div class="shop-group-title">${cat}</div>`;
+    html += `<div class="shop-group"><div class="shop-group-title">${escHtml(cat)}</div>`;
     groups[cat].sort((a,b)=>a.localeCompare(b,'he')).forEach(item=>{
       const bought = boughtItems.has(item);
       const emoji = iconOf(item);
@@ -2590,7 +2737,7 @@ function renderShoppingPanel(){
       html += `
         <div class="shop-item ${bought?'bought':''}" data-item="${escAttr(item)}">
           <button type="button" class="shop-check" aria-label="סימון כנקנה">${bought?'✓':''}</button>
-          <button type="button" class="shop-item-icon" aria-label="שינוי קטגוריה">${emoji}</button>
+          <button type="button" class="shop-item-icon" aria-label="שינוי קטגוריה">${escHtml(emoji)}</button>
           <div class="shop-item-name">${escHtml(item)}${qty?` <span class="shop-item-qty">(${escHtml(qty)})</span>`:''}${note?`<div class="shop-item-note">${escHtml(note)}</div>`:''}</div>
           <span class="shop-item-more" aria-hidden="true">‹</span>
         </div>`;
@@ -2724,7 +2871,7 @@ function renderShopManageBox(){
   if(!el) return;
   const catOrder = allCategoryNames().concat(['אחר']);
   el.innerHTML = `
-    <div class="settings-hint" style="margin-bottom:12px;">הפעולות כאן חלות על הרשימה הפעילה: <b>${getActiveList().name}</b></div>
+    <div class="settings-hint" style="margin-bottom:12px;">הפעולות כאן חלות על הרשימה הפעילה: <b>${escHtml(getActiveList().name)}</b></div>
     ${renderSyncBoxHTML()}
     <div class="shop-footer">
       <button class="primary" id="copyShoppingBtn">📋 העתקה</button>
@@ -2947,14 +3094,14 @@ function renderShoppingModeList(){
   catOrder.forEach(cat=>{
     if(!groups[cat] || groups[cat].length===0) return;
     const sorted = groups[cat].sort((a,b)=> (boughtItems.has(a)?1:0) - (boughtItems.has(b)?1:0) || a.localeCompare(b,'he'));
-    html += `<div class="sm-group-title">${cat}</div>`;
+    html += `<div class="sm-group-title">${escHtml(cat)}</div>`;
     html += sorted.map(name=>{
       const bought = boughtItems.has(name);
       const qty = qtyOfShopItem(name);
       return `
         <div class="sm-row${bought?' bought':''}" data-item="${escAttr(name)}">
           <span class="sm-check">${bought?'✓':''}</span>
-          <span class="sm-icon">${iconOf(name)}</span>
+          <span class="sm-icon">${escHtml(iconOf(name))}</span>
           <span class="sm-name">${escHtml(name)}${qty?` <span class="shop-item-qty">(${escHtml(qty)})</span>`:''}</span>
         </div>`;
     }).join('');
@@ -3098,7 +3245,7 @@ function cookIngredientsHTML(r){
         <div class="cook-ing-row${used?' used':''}" data-ing="${escAttr(name)}">
           <span class="cook-ing-check">${used?'✓':''}</span>
           <span class="cook-ing-dot ${have?'have':'miss'}"></span>
-          <span class="cook-ing-text">${qty ? qty+' ' : ''}${escHtml(name)}</span>
+          <span class="cook-ing-text">${qty ? escHtml(qty)+' ' : ''}${escHtml(name)}</span>
         </div>`;
     }).join('')
   }</div>`;
@@ -3456,14 +3603,15 @@ function renderLearnedList(){
   }
   el.innerHTML = all.map(e=>`
     <div class="custom-recipe-row">
-      <span>${e.type==='barcode' ? '🔖 ברקוד ' + e.key : '📷 ' + e.key} ← ${e.name}</span>
-      <button data-type="${e.type}" data-key="${e.key}" class="del-learned-btn">מחקו</button>
+      <span>${e.type==='barcode' ? '🔖 ברקוד ' + escHtml(e.key) : '📷 ' + escHtml(e.key)} ← ${escHtml(e.name)}</span>
+      <button data-type="${e.type}" data-key="${escAttr(e.key)}" class="del-learned-btn">מחקו</button>
     </div>
   `).join('');
   el.querySelectorAll('.del-learned-btn').forEach(btn=>{
     btn.onclick = ()=>{
       if(btn.dataset.type==='label'){ delete learnedLabels[btn.dataset.key]; localStorage.setItem('learned_labels', JSON.stringify(learnedLabels)); }
       else { delete learnedBarcodes[btn.dataset.key]; localStorage.setItem('learned_barcodes', JSON.stringify(learnedBarcodes)); }
+      scheduleAppStatePush();
       renderLearnedList();
     };
   });
@@ -3476,7 +3624,7 @@ function renderAutoResetSettings(){
   toggle.checked = autoResetEnabled;
   const cats = allCategoryNames().concat(['אחר']);
   grid.innerHTML = cats.map(c=>`
-    <label class="clearcat-item"><input type="checkbox" value="${c}" ${protectedCategories.includes(c)?'checked':''}> ${c}</label>
+    <label class="clearcat-item"><input type="checkbox" value="${escAttr(c)}" ${protectedCategories.includes(c)?'checked':''}> ${escHtml(c)}</label>
   `).join('');
   toggle.onchange = ()=>{
     autoResetEnabled = toggle.checked;
@@ -3501,8 +3649,8 @@ function renderRemovedItemsList(){
   }
   el.innerHTML = removedCatalogItems.map(item=>`
     <div class="custom-recipe-row">
-      <span>${item} (${ING_TO_CAT[item]||'אחר'})</span>
-      <button data-item="${item}" class="restore-item-btn">שחזרו</button>
+      <span>${escHtml(item)} (${escHtml(ING_TO_CAT[item]||'אחר')})</span>
+      <button data-item="${escAttr(item)}" class="restore-item-btn">שחזרו</button>
     </div>
   `).join('');
   el.querySelectorAll('.restore-item-btn').forEach(btn=>{
@@ -3525,7 +3673,7 @@ function renderCategorySettingsSyncBox(){
     <div class="acct-picker">
       <div class="settings-hint" style="font-weight:700;margin-bottom:4px;">אילו סיווגים להציג:</div>
       <select id="catSettingsRowPicker" class="week-select">
-        ${accountCategorySettingsRows.map(r=>`<option value="${r.id}" ${r.id===activeCategorySettingsRowId?'selected':''}>${rowLabel(r)}</option>`).join('')}
+        ${accountCategorySettingsRows.map(r=>`<option value="${r.id}" ${r.id===activeCategorySettingsRowId?'selected':''}>${escHtml(rowLabel(r))}</option>`).join('')}
       </select>
     </div>` : '';
   el.innerHTML = `
@@ -3561,7 +3709,7 @@ function renderCatOverridesUI(){
   const select = document.getElementById('catAssignSelect');
   if(!select) return;
   const cats = allCategoryNames().concat(['אחר']);
-  select.innerHTML = cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+  select.innerHTML = cats.map(c=>`<option value="${escAttr(c)}">${escHtml(c)}</option>`).join('');
 
   const listEl = document.getElementById('catOverridesList');
   const items = [...new Set([...Object.keys(categoryOverrides), ...Object.keys(iconOverrides)])];
@@ -3570,10 +3718,10 @@ function renderCatOverridesUI(){
   } else {
     listEl.innerHTML = items.map(item=>`
       <div class="custom-recipe-row">
-        <span>${iconOf(item)} ${item} ← ${catOf(item)}</span>
+        <span>${escHtml(iconOf(item))} ${escHtml(item)} ← ${escHtml(catOf(item))}</span>
         <span class="row-actions">
-          <button data-item="${item}" class="edit-cat-btn">ערכו</button>
-          <button data-item="${item}" class="del-cat-btn">מחקו</button>
+          <button data-item="${escAttr(item)}" class="edit-cat-btn">ערכו</button>
+          <button data-item="${escAttr(item)}" class="del-cat-btn">מחקו</button>
         </span>
       </div>
     `).join('');
@@ -3620,8 +3768,8 @@ function renderCatOverridesUI(){
     } else {
       catsListEl.innerHTML = customCategories.map(c=>`
         <div class="custom-recipe-row">
-          <span>${c}</span>
-          <button data-cat="${c}" class="del-newcat-btn">מחקו</button>
+          <span>${escHtml(c)}</span>
+          <button data-cat="${escAttr(c)}" class="del-newcat-btn">מחקו</button>
         </div>
       `).join('');
       catsListEl.querySelectorAll('.del-newcat-btn').forEach(btn=>{
@@ -3661,10 +3809,10 @@ function renderCustomRecipesList(){
   }
   el.innerHTML = customRecipes.map(r=>`
     <div class="custom-recipe-row">
-      <span>${r.name}</span>
+      <span>${escHtml(r.name)}</span>
       <span class="row-actions">
-        <button data-name="${r.name}" class="edit-recipe-btn">ערכו</button>
-        <button data-name="${r.name}" class="del-custom-btn">מחקו</button>
+        <button data-name="${escAttr(r.name)}" class="edit-recipe-btn">ערכו</button>
+        <button data-name="${escAttr(r.name)}" class="del-custom-btn">מחקו</button>
       </span>
     </div>
   `).join('');
@@ -3848,13 +3996,13 @@ function renderImportForm(parsed, editingName, editMeta){
   el.innerHTML = `
     <div class="import-form-box">
       <label>שם המתכון</label>
-      <input type="text" id="impTitle" value="${parsed.title.replace(/"/g,'&quot;')}">
+      <input type="text" id="impTitle" value="${escAttr(parsed.title)}">
       <label>מצרכים (שורה לכל מצרך)</label>
-      <textarea id="impIngredients">${(parsed.ingredients||[]).map(i=>typeof i==='string'?i:(i.qty?`${i.name} — ${i.qty}`:ingName(i))).join('\n')}</textarea>
+      <textarea id="impIngredients">${escHtml((parsed.ingredients||[]).map(i=>typeof i==='string'?i:(i.qty?`${i.name} — ${i.qty}`:ingName(i))).join('\n'))}</textarea>
       <label>הוראות הכנה (שורה לכל שלב)</label>
-      <textarea id="impSteps">${parsed.steps.join('\n')}</textarea>
+      <textarea id="impSteps">${escHtml(parsed.steps.join('\n'))}</textarea>
       <label>זמן הכנה (לא חובה)</label>
-      <input type="text" id="impTime" placeholder="לדוגמה: 30 דק׳" value="${(parsed.time||'').replace(/"/g,'&quot;')}">
+      <input type="text" id="impTime" placeholder="לדוגמה: 30 דק׳" value="${escAttr(parsed.time||'')}">
       <div class="import-form-actions">
         <button id="impSaveBtn">${editingName ? 'שמרו שינויים' : 'שמרו מתכון'}</button>
         <button class="secondary" id="impCancelBtn">ביטול</button>
@@ -4153,7 +4301,7 @@ async function classifyAndAdd(file){
       saveFridge();
       renderAll();
       const statusEl = document.getElementById('camStatus');
-      statusEl.innerHTML = `✓ זיהינו ${matched} והוספנו למקרר · <a href="#" id="fixLabelLink">לא נכון? תקנו</a>`;
+      statusEl.innerHTML = `✓ זיהינו ${escHtml(matched)} והוספנו למקרר · <a href="#" id="fixLabelLink">לא נכון? תקנו</a>`;
       document.getElementById('fixLabelLink').onclick = (e)=>{
         e.preventDefault();
         showPromptModal('מה זה באמת? (נלמד את זה לפעם הבאה)', (name)=>{
@@ -4258,7 +4406,8 @@ async function lookupBarcode(code){
         saveFridge();
         renderAll();
         stopBarcodeScanner();
-        setCamStatus(`✓ זיהינו ${cleanName} מברקוד והוספנו למקרר · <a href="#" id="fixBarcodeLink">לא נכון? תקנו</a>`);
+        const camEl = document.getElementById('camStatus');
+        if(camEl) camEl.innerHTML = `✓ זיהינו ${escHtml(cleanName)} מברקוד והוספנו למקרר · <a href="#" id="fixBarcodeLink">לא נכון? תקנו</a>`;
         document.getElementById('fixBarcodeLink').onclick = (e)=>{
           e.preventDefault();
           showPromptModal('מה זה באמת? (נלמד את זה לפעם הבאה)', (fixedName)=>{
@@ -4338,7 +4487,34 @@ async function openBarcodeScanner(){
 }
 document.getElementById('barcodeCloseBtn').onclick = stopBarcodeScanner;
 
+// Moves favorites / cook history / weekly plan entries from recipes merged away (RECIPE_RENAMES in data.js).
+function migrateRenamedRecipes(){
+  if(typeof RECIPE_RENAMES === 'undefined') return false;
+  let changed = false;
+  Object.entries(RECIPE_RENAMES).forEach(([from, to])=>{
+    if(RECIPES.some(r=>r.name === from)) return;   // the old name still exists (e.g. an imported recipe) — leave it alone
+    if(favorites.has(from)){ favorites.delete(from); favorites.add(to); changed = true; }
+    if(cookedSet.has(from)){ cookedSet.delete(from); cookedSet.add(to); changed = true; }
+    if(cookHistory[from]){ cookHistory[to] = (cookHistory[to]||[]).concat(cookHistory[from]).sort().slice(-20); delete cookHistory[from]; changed = true; }
+    Object.keys(weeklyPlan).forEach(day=>{
+      const arr = weeklyPlan[day] || [];
+      if(arr.includes(from)){ weeklyPlan[day] = [...new Set(arr.map(n=> n===from ? to : n))]; changed = true; }
+    });
+    if(recipeOverrides[from]){ delete recipeOverrides[from]; changed = true; }
+  });
+  if(changed){
+    localStorage.setItem('favorites', JSON.stringify([...favorites]));
+    localStorage.setItem('cooked_recipes', JSON.stringify([...cookedSet]));
+    localStorage.setItem('cook_history', JSON.stringify(cookHistory));
+    localStorage.setItem('weekly_plan', JSON.stringify(weeklyPlan));
+    localStorage.setItem('recipe_overrides', JSON.stringify(recipeOverrides));
+    scheduleAppStatePush();
+  }
+  return changed;
+}
+
 applyTheme();
+migrateRenamedRecipes();
 checkDailyFridgeReset();
 renderCatTabs();
 renderAll();
