@@ -834,6 +834,7 @@ function renderAccountBox(){
         const { error } = await sbClient.auth.signInWithPassword({email, password});
         if(error) throw error;
         currentUser = (await sbClient.auth.getUser()).data.user;
+        applyDisplayPrefsFromUser(currentUser);
         status.textContent = '';
         await loadAccountData();
         renderAccountBox();
@@ -971,11 +972,39 @@ function renderAccountBox(){
     }catch(e){ status.textContent = 'שגיאה: ' + (e.message||''); }
   };
 }
+// ---- Display settings (simple mode, dark mode) follow the signed-in user to every device ----
+// Stored on the user's own account (not in the shared household data), so each family member keeps their own.
+function applyDisplayPrefs(prefs){
+  if(!prefs || typeof prefs !== 'object') return;
+  let changed = false;
+  if(typeof prefs.simple === 'boolean' && prefs.simple !== simpleMode){ simpleMode = prefs.simple; localStorage.setItem('simple_mode', simpleMode ? '1' : '0'); changed = true; }
+  if(typeof prefs.dark === 'boolean' && prefs.dark !== isDark){ isDark = prefs.dark; saveTheme(); changed = true; }
+  if(changed){ applyTheme(); applySimpleMode(); }
+}
+function applyDisplayPrefsFromUser(user){
+  applyDisplayPrefs(user && user.user_metadata && user.user_metadata.display_prefs);
+}
+async function saveDisplayPrefs(){
+  if(!currentUser || !sbClient) return;
+  try{
+    const { data, error } = await sbClient.auth.updateUser({ data: { display_prefs: { simple: simpleMode, dark: isDark } } });
+    if(!error && data && data.user) currentUser = data.user;
+  }catch(e){ /* offline — this device keeps its setting; it will be sent next time it changes */ }
+}
+async function refreshDisplayPrefs(){
+  if(!currentUser || !sbClient) return;
+  try{
+    const { data } = await sbClient.auth.getUser();        // fresh from the server (getSession may be cached)
+    if(data && data.user){ currentUser = data.user; applyDisplayPrefsFromUser(data.user); }
+  }catch(e){}
+}
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible') refreshDisplayPrefs(); });
+
 async function initAccount(){
   if(!sbClient) return;
   const { data:{ session } } = await sbClient.auth.getSession();
   currentUser = session ? session.user : null;
-  if(currentUser) await loadAccountData();
+  if(currentUser){ applyDisplayPrefsFromUser(currentUser); refreshDisplayPrefs(); await loadAccountData(); }
   renderAccountBox();
 }
 let syncCode = getActiveList().syncCode || null;
@@ -3623,6 +3652,7 @@ document.getElementById('themeBtn').onclick = ()=>{
   isDark = !isDark;
   saveTheme();
   applyTheme();
+  saveDisplayPrefs();
 };
 
 document.getElementById('customAddBtn').onclick = ()=>{
@@ -4297,6 +4327,7 @@ if(simpleModeToggle){
     simpleMode = !!simpleModeToggle.checked;
     localStorage.setItem('simple_mode', simpleMode ? '1' : '0');
     applySimpleMode();
+    saveDisplayPrefs();
   };
 }
 const tonightRefreshBtn = document.getElementById('tonightRefreshBtn');
