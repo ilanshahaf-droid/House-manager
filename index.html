@@ -1044,6 +1044,7 @@ function adminSettings() {
     </form>
     <div class="section-t">🔔 התראות אליי</div>
     <div class="card">${pushBlock()}<p class="muted small">תקבל/י התראה על כל דיווח חדש ועל כל בקשה מהחנות. הילדים מקבלים התראה כשדיווח מאושר, על בונוס, כשהחנות נפתחת, ותזכורת לפי השעה שנקבעה (רק אם המטלה עוד לא בוצעה).</p></div>
+    <p class="muted small" style="text-align:center;margin-top:18px">גרסה 4 · 30.10 (תיקון משתתפים)</p>
     <div class="section-t">איך זה עובד</div>
     <div class="card small muted" style="line-height:1.7">• כל ילד בוחר מטלה אחת לשבוע (ראשון–שבת) מתוך המטלות שמשויכות אליו.<br>• כל דיווח ביצוע מגיע אליך לאישור; רק אחרי אישור הקרדיטים נכנסים ליתרה.<br>• קרדיטים נצברים לאורך החודש, ובסוף החודש החנות נפתחת להמרה. יתרה שלא נוצלה ממשיכה לחודש הבא.<br>• קנייה בחנות מורידה קרדיטים מיד; אם דוחים — הקרדיטים חוזרים.<br>• פרס משפחתי: כל הילדים תורמים לקופה משותפת (בכל זמן). כשהקופה מלאה — מקבלים התראה.<br>• משימות בונוס: חד-פעמיות; במשימה משותפת הקרדיטים מתחלקים שווה בשווה.<br>• תמונות מדיווחים נמחקות אוטומטית אחרי אישור או דחייה.<br>• במוצאי שבת (20:00) מגיע אליך סיכום שבועי בהתראה.</div>`;
 }
@@ -1131,7 +1132,7 @@ const ACT = {
     const me = S.me;
     const m = openModal('החשבון שלי', `<div class="row" style="margin-bottom:16px"><span class="avatar lg" style="--c:${me.color}">${esc(me.avatar)}</span><div><h3>${esc(me.display_name)}</h3><div class="muted small" dir="ltr" style="text-align:right">@${esc(me.username)}</div></div></div>
       <form id="pwF"><div class="field"><label>שינוי סיסמה</label><input class="input" name="p" type="password" minlength="6" dir="ltr" placeholder="סיסמה חדשה" required></div><button class="btn ghost block" type="submit">עדכון סיסמה</button></form>
-      <div class="row-end"><button class="btn danger block" id="lo">יציאה מהחשבון</button></div>`);
+      <div class="row-end"><button class="btn danger block" id="lo">יציאה מהחשבון</button></div><p class="muted small" style="text-align:center;margin-top:10px">גרסה 4 · 30.10</p>`);
     m.querySelector('#lo').onclick = logout;
     m.querySelector('#pwF').onsubmit = async ev => { ev.preventDefault(); const { error } = await sb.auth.updateUser({ password: ev.target.p.value }); if (error) return toast(errMsg(error), 'bad'); closeModal(); toast('הסיסמה עודכנה', 'ok'); };
   },
