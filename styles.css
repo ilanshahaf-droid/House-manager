@@ -2197,3 +2197,17 @@ body.simple-mode #dailyRecipeSection{ display:none !important; }
 .hist-back{ color:var(--herb); }
 .hist-gone{ color:var(--brick); }
 .hist-restore{ flex-shrink:0; border:none; background:var(--herb); color:var(--on-herb,#fff); padding:9px 14px; border-radius:100px; font-size:13.5px; font-weight:800; cursor:pointer; font-family:'Assistant',sans-serif; }
+
+/* —— Recipes: fridge view / full list —— */
+.recipe-view-toggle{ display:flex; background:var(--surface); border:1px solid var(--line); border-radius:100px; padding:3px; gap:2px; flex-shrink:0; }
+.recipe-view-toggle button{ border:none; background:none; color:var(--ink-soft); padding:7px 12px; border-radius:100px; font-size:12.5px; font-weight:700; cursor:pointer; font-family:'Assistant',sans-serif; white-space:nowrap; }
+.recipe-view-toggle button.active{ background:var(--herb); color:var(--on-herb,#fff); }
+#recipesListSection .section-head{ gap:10px; flex-wrap:wrap; }
+.recipe-count{ font-size:12.5px; font-weight:700; color:var(--ink-soft); margin:2px 4px 10px; }
+.recipe-letter{ position:sticky; top:84px; z-index:2; display:inline-block; background:var(--paper); color:var(--brick); font-family:'Frank Ruhl Libre',serif; font-weight:900; font-size:18px; padding:6px 4px 4px; margin-top:6px; }
+.recipe-card.compact{ padding:12px 16px; margin-bottom:8px; border-radius:16px; }
+.recipe-card.compact .recipe-head h3{ font-size:16px; }
+.recipe-card.compact .recipe-meta{ margin-top:2px; }
+.recipe-card.compact:not(.open) .recipe-tags,
+.recipe-card.compact:not(.open) .history-line,
+.recipe-card.compact:not(.open) .missing-line{ display:none; }

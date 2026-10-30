@@ -92,8 +92,14 @@
       <h2>מתכון היום</h2>
       <div id="dailyRecipe"></div>
     </section>
-    <section>
-      <h2>מתכונים</h2>
+    <section id="recipesListSection">
+      <div class="section-head">
+        <h2 style="margin:0;">מתכונים</h2>
+        <div class="recipe-view-toggle" id="recipeViewToggle" role="tablist">
+          <button type="button" data-view="fridge">לפי המקרר</button>
+          <button type="button" data-view="all">כל המתכונים</button>
+        </div>
+      </div>
       <div id="recipeResults">
         <p class="empty-state">כאן יופיעו מתכונים — חפשו למעלה או סמנו מצרכים במקרר.</p>
       </div>

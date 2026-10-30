@@ -2330,12 +2330,42 @@ function renderFilterRow(){
   };
 }
 
+// 'fridge' = recipes that match what's in the fridge (default) · 'all' = every recipe, A–Z, as one long list
+let recipesView = localStorage.getItem('recipes_view') === 'all' ? 'all' : 'fridge';
+function setRecipesView(view){
+  recipesView = view === 'all' ? 'all' : 'fridge';
+  localStorage.setItem('recipes_view', recipesView);
+  if(recipesView === 'all'){
+    // the "ready now / almost ready" shortcuts belong to the fridge view
+    filters.readyNow = false; filters.almostReady = false; readyNowAutoApplied = true;
+  } else {
+    readyNowAutoApplied = false;
+  }
+  renderFilterRow();
+  renderRecipes();
+  const sec = document.getElementById('recipesListSection');
+  if(sec && sec.scrollIntoView) sec.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+function paintRecipeViewToggle(){
+  document.querySelectorAll('#recipeViewToggle button').forEach(b=>{
+    const on = b.dataset.view === recipesView;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+    if(b.dataset.view === 'all') b.textContent = `כל המתכונים (${RECIPES.length})`;
+  });
+}
+document.querySelectorAll('#recipeViewToggle button').forEach(b=>{
+  b.onclick = ()=>{ if(b.dataset.view !== recipesView) setRecipesView(b.dataset.view); };
+});
+
 function renderRecipes(){
   const el = document.getElementById('recipeResults');
   const searching = filters.search.trim().length>0;
+  const showAll = recipesView === 'all';
+  paintRecipeViewToggle();
 
   // Default: when fridge has items, prefer recipes you can make right now
-  if(fridge.size > 0 && !readyNowAutoApplied && !searching && !filters.favoritesOnly){
+  if(!showAll && fridge.size > 0 && !readyNowAutoApplied && !searching && !filters.favoritesOnly){
     filters.readyNow = true;
     readyNowAutoApplied = true;
     renderFilterRow();
@@ -2345,8 +2375,9 @@ function renderRecipes(){
     readyNowAutoApplied = false;
   }
 
-  if(fridge.size===0 && !searching && !filters.favoritesOnly){
-    el.innerHTML = '<p class="empty-state">סמנו מצרכים במקרר — או חפשו מתכון לפי שם. אפשר גם להוסיף מצרכים חסרים ישר לרשימת הקניות מכל מתכון.</p>';
+  if(!showAll && fridge.size===0 && !searching && !filters.favoritesOnly){
+    el.innerHTML = '<p class="empty-state">סמנו מצרכים במקרר — או חפשו מתכון לפי שם. אפשר גם להוסיף מצרכים חסרים ישר לרשימת הקניות מכל מתכון.</p><button type="button" class="clear-filters-btn" id="showAllRecipesBtn">הציגו את כל המתכונים</button>';
+    document.getElementById('showAllRecipesBtn').onclick = ()=> setRecipesView('all');
     return;
   }
 
@@ -2360,7 +2391,7 @@ function renderRecipes(){
   if(searching){
     const q = filters.search.trim();
     list = list.filter(r=>r.name.includes(q));
-  } else if(!filters.favoritesOnly){
+  } else if(!filters.favoritesOnly && !showAll){
     list = list.filter(r=>r.haveCount>0);
   }
 
@@ -2374,7 +2405,7 @@ function renderRecipes(){
   if(filters.cuisine!=='all') list = list.filter(r=>r.cuisine===filters.cuisine);
   if(filters.difficulty!=='all') list = list.filter(r=>r.difficulty===filters.difficulty);
 
-  if(fridge.size>0){
+  if(fridge.size>0 && !showAll){
     list.sort((a,b)=> (b.haveCount/b.total) - (a.haveCount/a.total) || b.haveCount - a.haveCount
       || minutesOf(a) - minutesOf(b) || a.name.localeCompare(b.name,'he'));
   } else {
@@ -2397,9 +2428,26 @@ function renderRecipes(){
   }
 
   el.innerHTML='';
+  if(showAll){
+    const count = document.createElement('div');
+    count.className = 'recipe-count';
+    count.textContent = list.length === RECIPES.length ? `${list.length} מתכונים, לפי סדר האלף-בית` : `${list.length} מתוך ${RECIPES.length} מתכונים`;
+    el.appendChild(count);
+  }
+  let lastLetter = '';
   list.forEach(r=>{
+    if(showAll){
+      const letter = (r.name || '').trim().charAt(0);
+      if(letter && letter !== lastLetter){
+        lastLetter = letter;
+        const hd = document.createElement('div');
+        hd.className = 'recipe-letter';
+        hd.textContent = letter;
+        el.appendChild(hd);
+      }
+    }
     const card = document.createElement('div');
-    card.className='recipe-card';
+    card.className = 'recipe-card' + (showAll ? ' compact' : '');
     const isFull = r.total>0 && r.missing.length===0;
     const cooked = cookedSet.has(r.name);
     const isFav = favorites.has(r.name);
@@ -4614,7 +4662,20 @@ document.getElementById('barcodeCloseBtn').onclick = stopBarcodeScanner;
 function migrateRenamedRecipes(){
   if(typeof RECIPE_RENAMES === 'undefined') return false;
   let changed = false;
+  let recipesAdded = false;
   Object.entries(RECIPE_RENAMES).forEach(([from, to])=>{
+    // You edited a recipe that has since been merged away: keep your version as a personal recipe instead of losing it.
+    if(recipeOverrides[from]){
+      const mine = Object.assign({}, recipeOverrides[from]);
+      if(!mine.name) mine.name = from;
+      if(!RECIPES.some(r=>r.name === mine.name)){
+        customRecipes.push(mine);
+        RECIPES.push(mine);
+        recipesAdded = true;
+      }
+      delete recipeOverrides[from];
+      changed = true;
+    }
     if(RECIPES.some(r=>r.name === from)) return;   // the old name still exists (e.g. an imported recipe) — leave it alone
     if(favorites.has(from)){ favorites.delete(from); favorites.add(to); changed = true; }
     if(cookedSet.has(from)){ cookedSet.delete(from); cookedSet.add(to); changed = true; }
@@ -4623,8 +4684,12 @@ function migrateRenamedRecipes(){
       const arr = weeklyPlan[day] || [];
       if(arr.includes(from)){ weeklyPlan[day] = [...new Set(arr.map(n=> n===from ? to : n))]; changed = true; }
     });
-    if(recipeOverrides[from]){ delete recipeOverrides[from]; changed = true; }
   });
+  if(recipesAdded){
+    localStorage.setItem('custom_recipes', JSON.stringify(customRecipes));
+    pushRecipeSync();
+    pushRecipesRow();
+  }
   if(changed){
     localStorage.setItem('favorites', JSON.stringify([...favorites]));
     localStorage.setItem('cooked_recipes', JSON.stringify([...cookedSet]));
