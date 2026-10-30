@@ -64,6 +64,10 @@
 
   <div class="tab-content" id="tab-recipes">
     <section style="margin-top:16px;">
+      <div class="recipe-view-toggle" id="recipeViewToggle" role="tablist">
+        <button type="button" data-view="fridge">🧊 לפי המקרר</button>
+        <button type="button" data-view="all">📖 כל המתכונים</button>
+      </div>
       <div class="filters-wrap">
         <div class="search-row">
           <input type="search" id="searchInput" name="recipe_search" placeholder="חיפוש מתכון לפי שם..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
@@ -93,13 +97,7 @@
       <div id="dailyRecipe"></div>
     </section>
     <section id="recipesListSection">
-      <div class="section-head">
-        <h2 style="margin:0;">מתכונים</h2>
-        <div class="recipe-view-toggle" id="recipeViewToggle" role="tablist">
-          <button type="button" data-view="fridge">לפי המקרר</button>
-          <button type="button" data-view="all">כל המתכונים</button>
-        </div>
-      </div>
+      <h2>מתכונים</h2>
       <div id="recipeResults">
         <p class="empty-state">כאן יופיעו מתכונים — חפשו למעלה או סמנו מצרכים במקרר.</p>
       </div>

@@ -2343,16 +2343,17 @@ function setRecipesView(view){
   }
   renderFilterRow();
   renderRecipes();
-  const sec = document.getElementById('recipesListSection');
-  if(sec && sec.scrollIntoView) sec.scrollIntoView({ behavior:'smooth', block:'start' });
+  window.scrollTo(0, 0);
 }
 function paintRecipeViewToggle(){
   document.querySelectorAll('#recipeViewToggle button').forEach(b=>{
     const on = b.dataset.view === recipesView;
     b.classList.toggle('active', on);
     b.setAttribute('aria-selected', on ? 'true' : 'false');
-    if(b.dataset.view === 'all') b.textContent = `כל המתכונים (${RECIPES.length})`;
+    if(b.dataset.view === 'all') b.textContent = `📖 כל המתכונים (${RECIPES.length})`;
   });
+  // In the full-list view the suggestion blocks are hidden, so the A–Z list starts right under the filters
+  document.body.classList.toggle('recipes-all', recipesView === 'all');
 }
 document.querySelectorAll('#recipeViewToggle button').forEach(b=>{
   b.onclick = ()=>{ if(b.dataset.view !== recipesView) setRecipesView(b.dataset.view); };
