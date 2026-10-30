@@ -290,6 +290,84 @@ function adoptShoppingLists(next){
   boughtItems = new Set(getActiveList().bought||[]);
   syncCode = getActiveList().syncCode || null;
 }
+// ---- Shopping list version history (kept on each device) ----
+// Before anything removes items or un-checks them (a change from another phone, an app update, a restore),
+// the previous list is saved here, so it can be brought back from Settings → ניהול רשימת קניות.
+const SHOP_HISTORY_MAX = 30;
+function shopHistoryKey(rowId){ return 'shopping_history_' + (rowId || activeShoppingRowId || 'local'); }
+function readShopHistory(rowId){ try{ return JSON.parse(localStorage.getItem(shopHistoryKey(rowId)) || '[]'); }catch(e){ return []; } }
+function listsSignature(lists){
+  return JSON.stringify(Object.keys(lists || {}).sort().map(id=>[id, (lists[id].items||[]).slice().sort(), (lists[id].bought||[]).slice().sort()]));
+}
+// true if going from `before` to `after` loses an item, a whole list, or a check mark
+function shoppingChangeLosesSomething(before, after){
+  before = before || {}; after = after || {};
+  return Object.keys(before).some(id=>{
+    const b = before[id] || {}, a = after[id];
+    if(!a) return (b.items||[]).length > 0;
+    const aItems = new Set(a.items || []), aBought = new Set(a.bought || []);
+    return (b.items||[]).some(i=>!aItems.has(i)) || (b.bought||[]).some(i=>aItems.has(i) && !aBought.has(i));
+  });
+}
+function snapshotShopping(lists, why, rowId){
+  if(!lists || !Object.keys(lists).some(id=>(lists[id].items||[]).length)) return;
+  const h = readShopHistory(rowId);
+  const sig = listsSignature(lists);
+  if(h.length && h[0].sig === sig) return;
+  h.unshift({ t: new Date().toISOString(), why, sig, lists: cloneJSON(lists) });
+  const key = shopHistoryKey(rowId);
+  try{ localStorage.setItem(key, JSON.stringify(h.slice(0, SHOP_HISTORY_MAX))); }
+  catch(e){ try{ localStorage.setItem(key, JSON.stringify(h.slice(0, 8))); }catch(e2){} }
+}
+function restoreShoppingSnapshot(entry){
+  syncLiveSetsIntoList();
+  snapshotShopping(shoppingLists, 'לפני שחזור');
+  const keepActive = activeListId;
+  adoptShoppingLists(cloneJSON(entry.lists));
+  if(entry.lists[keepActive]){ activeListId = keepActive; adoptShoppingLists(shoppingLists); }
+  scheduleShoppingPush();
+  pushSync();
+  refreshShoppingViews();
+}
+function openShopHistorySheet(){
+  syncLiveSetsIntoList();
+  const h = readShopHistory();
+  const fmt = (iso)=> new Date(iso).toLocaleString('he-IL', { day:'numeric', month:'numeric', hour:'2-digit', minute:'2-digit' });
+  const diffText = (snap)=>{
+    const now = new Set(Object.values(shoppingLists).flatMap(l=>l.items||[]));
+    const then = new Set(Object.values(snap).flatMap(l=>l.items||[]));
+    const back = [...then].filter(i=>!now.has(i)), gone = [...now].filter(i=>!then.has(i));
+    const cut = (arr)=> arr.slice(0,6).map(escHtml).join(', ') + (arr.length>6 ? ` ועוד ${arr.length-6}` : '');
+    if(!back.length && !gone.length) return '<div class="hist-diff">אותם פריטים כמו עכשיו (ייתכן שהסימונים שונים)</div>';
+    return (back.length ? `<div class="hist-diff hist-back">יחזרו (${back.length}): ${cut(back)}</div>` : '')
+         + (gone.length ? `<div class="hist-diff hist-gone">יוסרו (${gone.length}): ${cut(gone)}</div>` : '');
+  };
+  const rows = h.map((e, i)=>{
+    const total = Object.values(e.lists).reduce((n,l)=>n + (l.items||[]).length, 0);
+    return `<div class="hist-row">
+      <div class="hist-main">
+        <div class="hist-title">${escHtml(fmt(e.t))} · ${escHtml(e.why)}</div>
+        <div class="hist-sub">${total} פריטים</div>
+        ${diffText(e.lists)}
+      </div>
+      <button type="button" class="hist-restore" data-i="${i}">שחזרו</button>
+    </div>`;
+  }).join('');
+  const ov = openSheet('shopHistorySheet', `
+    <div class="sheet-head"><h3>גרסאות קודמות של הרשימה</h3><button type="button" class="sheet-x" id="hsClose" aria-label="סגירה">×</button></div>
+    <p class="settings-hint" style="margin:0 0 10px;">נשמרות במכשיר הזה בכל פעם שפריטים נמחקים או מסומנים מחדש. שחזור מעדכן את הרשימה בכל המכשירים.</p>
+    ${rows || '<p class="custom-empty">עדיין אין גרסאות שמורות במכשיר הזה.</p>'}`, 'tall');
+  ov.querySelector('#hsClose').onclick = ()=> ov.remove();
+  ov.querySelectorAll('.hist-restore').forEach(btn=>{
+    btn.onclick = ()=>{
+      const e = h[+btn.dataset.i];
+      showConfirmModal(`לשחזר את הרשימה כפי שהייתה ב-${fmt(e.t)}? הגרסה הנוכחית תישמר כאן ואפשר יהיה לחזור אליה.`, ()=>{
+        restoreShoppingSnapshot(e);
+        ov.remove();
+      });
+    };
+  });
+}
 function subscribeShoppingRealtime(rowId){
   if(shoppingRealtimeChannel){ sbClient.removeChannel(shoppingRealtimeChannel); shoppingRealtimeChannel = null; }
   if(!rowId || !sbClient) return;
@@ -308,6 +386,7 @@ function subscribeShoppingRealtime(rowId){
       // Unsent local edits are kept on top of the incoming copy instead of being thrown away.
       const next = busy ? mergeShoppingLists(shoppingBase || remote, shoppingLists, remote) : cloneJSON(remote);
       setShoppingBase(remote, rowId);
+      if(shoppingChangeLosesSomething(listsBefore, next)) snapshotShopping(listsBefore, 'לפני שינוי ממכשיר אחר', rowId);
       noticeAddedByOthers(listsBefore, next);
       adoptShoppingLists(next);
       renderShoppingPanel();
@@ -323,10 +402,12 @@ function applyShoppingRow(row){
   // If they were built on a known copy of THIS row, merge them in rather than discarding them.
   let next = cloneJSON(server);
   let hadOfflineEdits = false;
+  let localBefore = null;
   if(prevRowId === row.id){
     try{
       const savedBase = localStorage.getItem('shopping_base_' + row.id);
       const localNow = localStorage.getItem('shopping_lists');
+      if(localNow) localBefore = JSON.parse(localNow);
       if(savedBase && localNow && savedBase !== localNow){
         next = mergeShoppingLists(JSON.parse(savedBase), JSON.parse(localNow), server);
         hadOfflineEdits = JSON.stringify(next) !== JSON.stringify(server);
@@ -335,6 +416,10 @@ function applyShoppingRow(row){
   }
   activeShoppingRowId = row.id;
   lastShoppingUpdatedAt = row.updated_at || null;
+  if(localBefore && shoppingChangeLosesSomething(localBefore, next)){
+    const firstRun = !localStorage.getItem('shopping_base_' + row.id);
+    snapshotShopping(localBefore, firstRun ? 'לפני עדכון האפליקציה' : 'לפני סנכרון בפתיחה', row.id);
+  }
   localStorage.setItem('active_shopping_row', row.id);
   setShoppingBase(server, row.id);
   adoptShoppingLists(next);
@@ -501,6 +586,8 @@ async function refreshShoppingRowFromAccount(){
     const remote = (data.payload && Object.keys(data.payload).length) ? data.payload : null;
     if(!remote) return;
     setShoppingBase(remote, rowId);
+    syncLiveSetsIntoList();
+    if(shoppingChangeLosesSomething(shoppingLists, remote)) snapshotShopping(cloneJSON(shoppingLists), 'לפני שינוי ממכשיר אחר', rowId);
     adoptShoppingLists(cloneJSON(remote));
     renderShoppingPanel();
     renderTabBadges();
@@ -1246,7 +1333,7 @@ function openItemSheet(item){
 }
 function openCategoryPicker(item, onPicked){
   const current = catOf(item);
-  const fixed = Object.keys(CATALOG).concat(['אחר']);
+  const fixed = [...new Set(Object.keys(CATALOG).concat(['אחר']))];
   const row = (c)=>`
     <button type="button" class="cp-row${c===current?' current':''}" data-cat="${escAttr(c)}">
       <span class="cp-icon">${escHtml(categoryIconOf(c))}</span><span class="cp-name">${escHtml(c)}</span>${c===current?'<span class="cp-check">✓</span>':''}
@@ -1295,6 +1382,7 @@ function openCategoryPicker(item, onPicked){
 function clearBoughtInList(id){
   const l = shoppingLists[id];
   if(!l) return;
+  syncLiveSetsIntoList(); snapshotShopping(shoppingLists, 'לפני ניקוי מסומנים');
   if(id === activeListId){
     [...boughtItems].forEach(i=>{ shoppingList.delete(i); });
     boughtItems.clear();
@@ -1783,7 +1871,7 @@ let clearByCatOpen = false;
 
 function renderFridgeStrip(){
   const wrap = document.getElementById('fridgeSummaryWrap');
-  const catCheckboxes = allCategoryNames().concat(['אחר']).map(cat=>`
+  const catCheckboxes = [...new Set(allCategoryNames().concat(['אחר']))].map(cat=>`
     <label class="clearcat-item"><input type="checkbox" value="${escAttr(cat)}"> ${escHtml(cat)}</label>
   `).join('');
   const clearCatPanel = `
@@ -2451,7 +2539,7 @@ function openWeekShopPreview(){
   document.body.appendChild(overlay);
 
   const render = ()=>{
-    const order = allCategoryNames().concat(['אחר']);
+    const order = [...new Set(allCategoryNames().concat(['אחר']))];
     const groups = {};
     missing.forEach(e=>{ (groups[e.cat] = groups[e.cat] || []).push(e); });
     const groupHtml = order.filter(c=>groups[c]).map(c=>`
@@ -2724,7 +2812,7 @@ function renderShoppingPanel(){
     if(!groups[cat]) groups[cat] = [];
     groups[cat].push(item);
   });
-  const catOrder = allCategoryNames().concat(['אחר']);
+  const catOrder = [...new Set(allCategoryNames().concat(['אחר']))];
 
   catOrder.forEach(cat=>{
     if(!groups[cat] || groups[cat].length===0) return;
@@ -2869,7 +2957,7 @@ function saveShoppingListForLater(){
 function renderShopManageBox(){
   const el = document.getElementById('shoppingManageBox');
   if(!el) return;
-  const catOrder = allCategoryNames().concat(['אחר']);
+  const catOrder = [...new Set(allCategoryNames().concat(['אחר']))];
   el.innerHTML = `
     <div class="settings-hint" style="margin-bottom:12px;">הפעולות כאן חלות על הרשימה הפעילה: <b>${escHtml(getActiveList().name)}</b></div>
     ${renderSyncBoxHTML()}
@@ -2881,7 +2969,9 @@ function renderShopManageBox(){
       <button id="clearBoughtBtn">נקו מסומנים</button>
       <button id="clearShoppingBtn">נקו הכל</button>
     </div>
+    <button type="button" class="import-btn secondary" id="shopHistoryBtn" style="margin-top:12px;">🕘 גרסאות קודמות של הרשימה</button>
   `;
+  document.getElementById('shopHistoryBtn').onclick = openShopHistorySheet;
   wireSyncBox();
 
   document.getElementById('copyShoppingBtn').onclick = ()=>{
@@ -2917,6 +3007,7 @@ function renderShopManageBox(){
   document.getElementById('shareCodeBtn').onclick = shareShoppingCode;
 
   document.getElementById('clearBoughtBtn').onclick = ()=>{
+    syncLiveSetsIntoList(); snapshotShopping(shoppingLists, 'לפני ניקוי מסומנים');
     boughtItems.forEach(i=>shoppingList.delete(i));
     boughtItems.clear();
     saveShoppingList();
@@ -2925,6 +3016,7 @@ function renderShopManageBox(){
   };
   document.getElementById('clearShoppingBtn').onclick = ()=>{
     showConfirmModal('למחוק את כל רשימת הקניות?', ()=>{
+      syncLiveSetsIntoList(); snapshotShopping(shoppingLists, 'לפני מחיקת הרשימה');
       shoppingList.clear();
       boughtItems.clear();
       saveShoppingList();
@@ -3083,7 +3175,7 @@ function renderShoppingModeList(){
     return;
   }
   // Aisle order ≈ category order (produce → dairy → pantry…)
-  const catOrder = allCategoryNames().concat(['אחר']);
+  const catOrder = [...new Set(allCategoryNames().concat(['אחר']))];
   const groups = {};
   items.forEach(item=>{
     const cat = catOf(item);
@@ -3622,7 +3714,7 @@ function renderAutoResetSettings(){
   const grid = document.getElementById('protectedCatsGrid');
   if(!toggle || !grid) return;
   toggle.checked = autoResetEnabled;
-  const cats = allCategoryNames().concat(['אחר']);
+  const cats = [...new Set(allCategoryNames().concat(['אחר']))];
   grid.innerHTML = cats.map(c=>`
     <label class="clearcat-item"><input type="checkbox" value="${escAttr(c)}" ${protectedCategories.includes(c)?'checked':''}> ${escHtml(c)}</label>
   `).join('');
@@ -3708,7 +3800,7 @@ function renderCategorySettingsSyncBox(){
 function renderCatOverridesUI(){
   const select = document.getElementById('catAssignSelect');
   if(!select) return;
-  const cats = allCategoryNames().concat(['אחר']);
+  const cats = [...new Set(allCategoryNames().concat(['אחר']))];
   select.innerHTML = cats.map(c=>`<option value="${escAttr(c)}">${escHtml(c)}</option>`).join('');
 
   const listEl = document.getElementById('catOverridesList');
@@ -4806,8 +4898,28 @@ setTimeout(()=>maybeNotifyExpiring(false), 3500);
 // Register the service worker for offline support and real installability.
 // Requires service-worker.js (and manifest.json + icons) to be hosted in the same folder as this file.
 if('serviceWorker' in navigator){
+  // When a new version is published, pages that are already open (e.g. a phone that left the app in the
+  // background) reload themselves, so every device runs the same code. Unsent edits are pushed first.
+  const hadController = !!navigator.serviceWorker.controller;
+  let updateReloading = false;
+  const reloadForUpdate = ()=>{
+    if(updateReloading) return;
+    if(cookState.recipe || shoppingModeActive){                // don't interrupt cooking / shopping — reload when hidden
+      const onHide = ()=>{ if(document.visibilityState === 'hidden'){ document.removeEventListener('visibilitychange', onHide); reloadForUpdate(); } };
+      document.addEventListener('visibilitychange', onHide);
+      return;
+    }
+    updateReloading = true;
+    const go = ()=> location.reload();
+    if(shoppingPushPending || shoppingPushInFlight) pushShoppingRow().finally(()=>setTimeout(go, 300)); else go();
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{ if(hadController) reloadForUpdate(); });
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('service-worker.js').catch(()=>{
+    navigator.serviceWorker.register('service-worker.js').then(reg=>{
+      const check = ()=> reg.update().catch(()=>{});
+      document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible') check(); });
+      setInterval(check, 15 * 60 * 1000);
+    }).catch(()=>{
       // Missing file is fine — the app still works fully online, just without offline caching / install prompt.
     });
   });

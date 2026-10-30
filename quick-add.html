@@ -642,6 +642,16 @@ async function start(){
   }
 }
 
+// A newer published version takes over open pages, so this screen never runs stale code.
+if('serviceWorker' in navigator){
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{ if(hadController) location.reload(); });
+  navigator.serviceWorker.getRegistration().then(reg=>{
+    if(!reg) return;
+    document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible') reg.update().catch(()=>{}); });
+  }).catch(()=>{});
+}
+
 if(!sbClient){
   appEl.innerHTML = '<h1>הוספה מהירה</h1><div class="status err">טעינת מודול ההתחברות נכשלה — בדקו חיבור לאינטרנט ורעננו.</div>';
 } else {
