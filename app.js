@@ -805,6 +805,33 @@ async function doLogout(){
   localStorage.removeItem('active_category_settings_row');
   renderAccountBox();
 }
+// ---- Google sign-in (Supabase OAuth) ----
+const GOOGLE_ICON_SVG = '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
+// Where Google sends you back after signing in: this same page, without any #/?query.
+// This address must be listed in Supabase → Authentication → URL Configuration → Redirect URLs.
+function oauthReturnUrl(){ return location.origin + location.pathname; }
+async function signInWithGoogle(statusEl){
+  if(!sbClient) return;
+  if(statusEl) statusEl.textContent = 'עוברים לגוגל...';
+  try{ sessionStorage.setItem('oauth_pending', '1'); }catch(e){}
+  // push anything not yet saved before leaving the page
+  try{ if(shoppingPushPending) await pushShoppingRow(); }catch(e){}
+  const { error } = await sbClient.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: oauthReturnUrl(), queryParams: { prompt: 'select_account' } }
+  });
+  if(error && statusEl) statusEl.textContent = 'שגיאה: ' + (error.message || 'הכניסה עם גוגל נכשלה');
+}
+// Reads an error Google/Supabase sent back in the address (e.g. provider not enabled, address not allowed).
+function takeOAuthError(){
+  const h = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+  const q = new URLSearchParams(location.search);
+  const msg = h.get('error_description') || q.get('error_description') || h.get('error') || q.get('error');
+  if(msg) history.replaceState(null, '', location.pathname);
+  return msg ? decodeURIComponent(String(msg).replace(/\+/g, ' ')) : '';
+}
+let pendingOAuthError = '';
+
 function renderAccountBox(){
   const el = document.getElementById('accountBox');
   if(!el) return;
@@ -814,6 +841,12 @@ function renderAccountBox(){
   }
   if(!currentUser){
     el.innerHTML = `
+      <div class="sync-box">
+        <button type="button" class="google-btn" id="acctGoogleBtn">${GOOGLE_ICON_SVG}<span>כניסה עם חשבון Google</span></button>
+        <div class="cam-status" id="acctGoogleStatus">${escHtml(pendingOAuthError ? 'הכניסה עם גוגל נכשלה: ' + pendingOAuthError : '')}</div>
+        <p class="settings-hint" style="margin:8px 0 0;">יש לכם כבר חשבון עם אימייל וסיסמה? אם זו אותה כתובת Gmail, הכניסה עם גוגל תפתח את אותו החשבון עם כל הנתונים.</p>
+      </div>
+      <div class="acct-or"><span>או עם אימייל וסיסמה</span></div>
       <form class="sync-box" id="acctForm" autocomplete="on">
         <input type="email" id="acctEmail" name="username" autocomplete="username" placeholder="אימייל" class="acct-input">
         <input type="password" id="acctPassword" name="password" autocomplete="current-password" placeholder="סיסמה (לפחות 6 תווים)" class="acct-input">
@@ -824,6 +857,7 @@ function renderAccountBox(){
         </div>
         <div class="cam-status" id="acctStatus"></div>
       </form>`;
+    document.getElementById('acctGoogleBtn').onclick = ()=> signInWithGoogle(document.getElementById('acctGoogleStatus'));
     document.getElementById('acctForm').addEventListener('submit', (e)=>{ e.preventDefault(); document.getElementById('acctLoginBtn').click(); });
     document.getElementById('acctLoginBtn').onclick = async ()=>{
       const email = norm(document.getElementById('acctEmail').value);
@@ -1002,10 +1036,25 @@ document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState 
 
 async function initAccount(){
   if(!sbClient) return;
+  pendingOAuthError = takeOAuthError();
+  // getSession() also finishes a Google sign-in: it reads the login details Google sent back in the address.
   const { data:{ session } } = await sbClient.auth.getSession();
   currentUser = session ? session.user : null;
+  let cameFromGoogle = false;
+  try{ cameFromGoogle = sessionStorage.getItem('oauth_pending') === '1'; sessionStorage.removeItem('oauth_pending'); }catch(e){}
   if(currentUser){ applyDisplayPrefsFromUser(currentUser); refreshDisplayPrefs(); await loadAccountData(); }
   renderAccountBox();
+  if(cameFromGoogle && (currentUser || pendingOAuthError)){
+    if(currentUser) showAddedToast(`✓ מחוברים כ-${currentUser.email}`);
+    else { switchTab('settings'); openSettingsTopic('accountBox'); }
+  }
+}
+function openSettingsTopic(innerId){
+  const inner = document.getElementById(innerId);
+  const topic = inner && inner.closest('.settings-topic');
+  if(!topic || topic.classList.contains('open')) return;
+  const head = topic.querySelector('.topic-head');
+  if(head) head.click();
 }
 let syncCode = getActiveList().syncCode || null;
 let ranOutMode = false;
