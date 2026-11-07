@@ -2287,7 +2287,7 @@ function wireCardActions(card, r, missing){
   if(editBtn){
     editBtn.onclick = (e)=>{
       e.stopPropagation();
-      editAnyRecipe(r.name);
+      editRecipeInSheet(r.name);
     };
   }
 }
@@ -4274,7 +4274,7 @@ async function extractTextFromFile(file){
 
 // editMeta (optional): {type:'builtin', originalName} for editing one of the built-in recipes.
 // Editing a custom/imported recipe is signalled simply by passing its name as editingName with no editMeta.
-function renderImportForm(parsed, editingName, editMeta){
+function renderImportForm(parsed, editingName, editMeta, onDone){
   const el = document.getElementById('importForm');
   el.innerHTML = `
     <div class="import-form-box">
@@ -4330,11 +4330,12 @@ function renderImportForm(parsed, editingName, editMeta){
       pushRecipesRow();
     }
     el.innerHTML = '';
+    if(onDone){ onDone(`✓ "${name}" נשמר`); renderAll(); return; }
     document.getElementById('importStatus').textContent = `✓ "${name}" נשמר בהצלחה`;
     setTimeout(()=>{ document.getElementById('importStatus').textContent=''; }, 4000);
     renderAll();
   };
-  document.getElementById('impCancelBtn').onclick = ()=>{ el.innerHTML = ''; };
+  document.getElementById('impCancelBtn').onclick = ()=>{ el.innerHTML = ''; if(onDone) onDone(''); };
   const restoreBtn = document.getElementById('impRestoreBtn');
   if(restoreBtn){
     restoreBtn.onclick = ()=>{
@@ -4346,6 +4347,7 @@ function renderImportForm(parsed, editingName, editMeta){
         const idx = RECIPES.findIndex(r=>r.name===editingName);
         if(pristine && idx>-1) RECIPES[idx] = JSON.parse(JSON.stringify(pristine));
         el.innerHTML = '';
+        if(onDone){ onDone('✓ המתכון שוחזר למקור'); renderAll(); return; }
         document.getElementById('importStatus').textContent = '✓ המתכון שוחזר למקור';
         setTimeout(()=>{ document.getElementById('importStatus').textContent=''; }, 4000);
         renderAll();
@@ -4359,8 +4361,45 @@ function editCustomRecipe(name){
   renderImportForm({title:r.name, ingredients:r.ingredients||[], steps:r.steps||[], time:r.time||''}, name);
   document.getElementById('importForm').scrollIntoView({behavior:'smooth', block:'start'});
 }
+// Opens the recipe editor in a sheet over the current screen (used by the "ערכו מתכון" button on recipe cards).
+// The same form element used in Settings is borrowed into the sheet and put back when the sheet closes.
+function editRecipeInSheet(name){
+  const isCustom = !!customRecipes.find(r=>r.name===name);
+  let meta = null;
+  if(!isCustom){
+    const overrideEntry = Object.entries(recipeOverrides).find(([orig, data])=> data.name === name);
+    meta = { type:'builtin', originalName: overrideEntry ? overrideEntry[0] : name };
+  }
+  const r = isCustom ? customRecipes.find(x=>x.name===name) : RECIPES.find(x=>x.name===name);
+  if(!r) return;
+  const form = document.getElementById('importForm');
+  const home = { parent: form.parentNode, next: form.nextSibling };
+  const ov = openSheet('recipeEditSheet', `
+    <div class="sheet-head"><h3>עריכת מתכון</h3><button type="button" class="sheet-x" id="resClose" aria-label="סגירה">×</button></div>
+    <div id="resBody"></div>`, 'tall');
+  ov.querySelector('#resBody').appendChild(form);
+  let finished = false;
+  const finish = (msg)=>{
+    if(finished) return;
+    finished = true;
+    form.innerHTML = '';
+    home.parent.insertBefore(form, home.next);     // put the form back in Settings
+    ov.remove();
+    if(msg) showAddedToast(msg);
+  };
+  ov.querySelector('#resClose').onclick = ()=> finish('');
+  ov.addEventListener('click', e=>{ if(e.target === ov) finish(''); });
+  renderImportForm({title:r.name, ingredients:r.ingredients||[], steps:r.steps||[], time:r.time||''}, name, meta, finish);
+  const box = form.querySelector('.import-form-box');
+  if(box) box.style.marginTop = '0';
+}
+
 function editAnyRecipe(name){
   if(customRecipes.find(r=>r.name===name)){
+    // personal / imported recipe — make sure Settings → מתכונים is actually showing before editing there
+    switchTab('settings');
+    const head = [...document.querySelectorAll('.topic-head')].find(h=>h.querySelector('h2').textContent.includes('מתכונים'));
+    if(head && !head.closest('.settings-topic').classList.contains('open')) head.click();
     editCustomRecipe(name);
     return;
   }
