@@ -10,7 +10,7 @@
 <title>ניהול משק בית</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700;900&family=Assistant:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700;900&family=Assistant:wght@400;500;600;700&family=Rubik:wght@400;500&family=Heebo:wght@400;500&family=Varela+Round&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -336,7 +336,20 @@
 <div class="cook-overlay" id="cookOverlay">
   <div class="cook-header">
     <h2 id="cookTitle"></h2>
-    <button class="cook-close" id="cookCloseBtn">סגור</button>
+    <div class="cook-header-btns">
+      <button type="button" class="cook-close cook-font-btn" id="cookFontBtn" aria-expanded="false" aria-label="גופן וגודל טקסט">Aa</button>
+      <button class="cook-close" id="cookCloseBtn">סגור</button>
+    </div>
+  </div>
+  <div class="cook-font-panel" id="cookFontPanel">
+    <div class="cook-font-title">גופן</div>
+    <div class="cook-font-opts"></div>
+    <div class="cook-font-title">גודל טקסט</div>
+    <div class="cook-size-row">
+      <button type="button" id="cookSizeMinus" aria-label="הקטנה">א−</button>
+      <span id="cookSizeLabel">100%</span>
+      <button type="button" id="cookSizePlus" aria-label="הגדלה">א+</button>
+    </div>
   </div>
   <div class="cook-view-toggle" id="cookViewToggle">
     <button type="button" data-mode="pages" class="active">עמודים</button>

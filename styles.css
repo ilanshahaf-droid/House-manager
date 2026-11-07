@@ -2225,3 +2225,23 @@ body.recipes-all #recipesListSection{ margin-top:8px; }
 .acct-or::before, .acct-or::after{ content:''; flex:1; height:1px; background:var(--line); }
 .acct-btn-row button{ border:none; background:var(--herb); color:var(--on-herb,#fff); padding:10px 16px; border-radius:100px; font-size:14px; font-weight:700; cursor:pointer; font-family:'Assistant',sans-serif; }
 .acct-btn-row button.secondary{ background:none; border:1px solid var(--line); color:var(--ink-soft); }
+
+/* —— Cook mode: selectable font & size —— */
+.cook-header-btns{ display:flex; gap:8px; flex-shrink:0; }
+.cook-font-btn{ font-family:'Frank Ruhl Libre',serif; font-weight:900; font-size:16px; min-width:46px; }
+.cook-font-btn[aria-expanded="true"]{ background:var(--herb); border-color:var(--herb); color:var(--on-herb,#fff); }
+.cook-header{ position:relative; }
+.cook-font-panel{ display:none; background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:12px 14px 14px; margin:-6px 0 16px; box-shadow:var(--shadow-soft); }
+.cook-font-panel.open{ display:block; }
+.cook-font-title{ font-size:12.5px; font-weight:700; color:var(--ink-soft); margin:2px 0 8px; }
+.cook-font-opts{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.cook-font-opt{ border:1px solid var(--line); background:var(--paper); color:var(--ink); padding:9px 14px; border-radius:100px; font-size:17px; cursor:pointer; }
+.cook-font-opt.active{ background:var(--herb); border-color:var(--herb); color:var(--on-herb,#fff); }
+.cook-size-row{ display:flex; align-items:center; gap:14px; }
+.cook-size-row button{ width:52px; height:44px; border:1px solid var(--line); background:var(--paper); color:var(--ink); border-radius:12px; font-size:18px; font-weight:800; cursor:pointer; font-family:'Assistant',sans-serif; }
+.cook-size-row button:disabled{ opacity:.35; cursor:default; }
+#cookSizeLabel{ min-width:52px; text-align:center; font-weight:800; font-variant-numeric:tabular-nums; }
+#cookOverlay .cook-step-text,
+#cookOverlay .cook-list-steps{ font-family:var(--cook-font, 'Frank Ruhl Libre', serif); font-weight:var(--cook-weight, 400); font-size:calc(34px * var(--cook-scale, 1)); }
+#cookOverlay .cook-ing-text{ font-family:var(--cook-font, 'Assistant', sans-serif); font-weight:var(--cook-weight, 400); font-size:calc(23px * var(--cook-scale, 1)); }
+#cookOverlay.cook-list-mode .cook-step-text{ font-size:calc(34px * var(--cook-scale, 1)); }

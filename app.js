@@ -1013,9 +1013,47 @@ function renderAccountBox(){
 }
 // ---- Display settings (simple mode, dark mode) follow the signed-in user to every device ----
 // Stored on the user's own account (not in the shared household data), so each family member keeps their own.
+// ---- Cook mode text: font + size (chosen inside cook mode, synced with the other display settings) ----
+const COOK_FONTS = [
+  { id:'classic', label:'קלאסי',  family:"'Frank Ruhl Libre', serif" },
+  { id:'clean',   label:'נקי',    family:"'Assistant', sans-serif" },
+  { id:'round',   label:'עגול',   family:"'Varela Round', 'Assistant', sans-serif" },
+  { id:'modern',  label:'מודרני', family:"'Rubik', 'Assistant', sans-serif" },
+  { id:'bold',    label:'בולט',   family:"'Heebo', 'Assistant', sans-serif", weight:500 },
+];
+const COOK_SCALES = [0.7, 0.8, 0.9, 1, 1.15, 1.3, 1.5];
+let cookFont = localStorage.getItem('cook_font') || 'classic';
+if(!COOK_FONTS.some(f=>f.id === cookFont)) cookFont = 'classic';
+let cookScale = parseFloat(localStorage.getItem('cook_scale')) || 1;
+if(!COOK_SCALES.includes(cookScale)) cookScale = 1;
+function applyCookTypography(){
+  const ov = document.getElementById('cookOverlay');
+  if(!ov) return;
+  const f = COOK_FONTS.find(x=>x.id === cookFont) || COOK_FONTS[0];
+  ov.style.setProperty('--cook-font', f.family);
+  ov.style.setProperty('--cook-weight', String(f.weight || 400));
+  ov.style.setProperty('--cook-scale', String(cookScale));
+  document.querySelectorAll('#cookFontPanel .cook-font-opt').forEach(b=> b.classList.toggle('active', b.dataset.font === cookFont));
+  const i = COOK_SCALES.indexOf(cookScale);
+  const minus = document.getElementById('cookSizeMinus'), plus = document.getElementById('cookSizePlus');
+  if(minus) minus.disabled = i <= 0;
+  if(plus) plus.disabled = i >= COOK_SCALES.length - 1;
+  const lbl = document.getElementById('cookSizeLabel');
+  if(lbl) lbl.textContent = Math.round(cookScale * 100) + '%';
+}
+function saveCookTypography(){
+  localStorage.setItem('cook_font', cookFont);
+  localStorage.setItem('cook_scale', String(cookScale));
+  applyCookTypography();
+  clearTimeout(saveCookTypography._t);
+  saveCookTypography._t = setTimeout(saveDisplayPrefs, 800);   // several quick taps → one save
+}
+
 function applyDisplayPrefs(prefs){
   if(!prefs || typeof prefs !== 'object') return;
   let changed = false;
+  if(typeof prefs.cookFont === 'string' && COOK_FONTS.some(f=>f.id === prefs.cookFont) && prefs.cookFont !== cookFont){ cookFont = prefs.cookFont; localStorage.setItem('cook_font', cookFont); applyCookTypography(); }
+  if(typeof prefs.cookScale === 'number' && COOK_SCALES.includes(prefs.cookScale) && prefs.cookScale !== cookScale){ cookScale = prefs.cookScale; localStorage.setItem('cook_scale', String(cookScale)); applyCookTypography(); }
   if(typeof prefs.simple === 'boolean' && prefs.simple !== simpleMode){ simpleMode = prefs.simple; localStorage.setItem('simple_mode', simpleMode ? '1' : '0'); changed = true; }
   if(typeof prefs.dark === 'boolean' && prefs.dark !== isDark){ isDark = prefs.dark; saveTheme(); changed = true; }
   if(changed){ applyTheme(); applySimpleMode(); }
@@ -1026,7 +1064,7 @@ function applyDisplayPrefsFromUser(user){
 async function saveDisplayPrefs(){
   if(!currentUser || !sbClient) return;
   try{
-    const { data, error } = await sbClient.auth.updateUser({ data: { display_prefs: { simple: simpleMode, dark: isDark } } });
+    const { data, error } = await sbClient.auth.updateUser({ data: { display_prefs: { simple: simpleMode, dark: isDark, cookFont, cookScale } } });
     if(!error && data && data.user) currentUser = data.user;
   }catch(e){ /* offline — this device keeps its setting; it will be sent next time it changes */ }
 }
@@ -3436,6 +3474,24 @@ document.querySelectorAll('#cookViewToggle button').forEach(btn=>{
   };
 });
 
+(function setupCookFontPanel(){
+  const panel = document.getElementById('cookFontPanel');
+  const btn = document.getElementById('cookFontBtn');
+  if(!panel || !btn) return;
+  panel.querySelector('.cook-font-opts').innerHTML = COOK_FONTS.map(f=>
+    `<button type="button" class="cook-font-opt" data-font="${f.id}" style="font-family:${f.family}; font-weight:${f.weight||400}">אבג ${f.label}</button>`).join('');
+  panel.querySelectorAll('.cook-font-opt').forEach(b=>{ b.onclick = ()=>{ cookFont = b.dataset.font; saveCookTypography(); }; });
+  const step = (d)=>{ const i = COOK_SCALES.indexOf(cookScale); const n = Math.min(COOK_SCALES.length-1, Math.max(0, i + d)); cookScale = COOK_SCALES[n]; saveCookTypography(); };
+  document.getElementById('cookSizeMinus').onclick = ()=> step(-1);
+  document.getElementById('cookSizePlus').onclick = ()=> step(1);
+  btn.onclick = (e)=>{ e.stopPropagation(); const open = panel.classList.toggle('open'); btn.setAttribute('aria-expanded', open ? 'true' : 'false'); };
+  // tapping anywhere else in cook mode closes the panel
+  document.getElementById('cookOverlay').addEventListener('click', (e)=>{
+    if(panel.classList.contains('open') && !panel.contains(e.target) && e.target !== btn){ panel.classList.remove('open'); btn.setAttribute('aria-expanded','false'); }
+  });
+  applyCookTypography();
+})();
+
 function openCookMode(r){
   cookState.recipe = r;
   cookState.step = 0;
@@ -3452,6 +3508,7 @@ function openCookMode(r){
 function closeCookMode(){
   document.getElementById('cookOverlay').classList.remove('active');
   document.getElementById('cookTimerPanel').classList.remove('open');
+  document.getElementById('cookFontPanel').classList.remove('open');
   cookState.timerPanelOpen = false;
   stopTimer();
   stopSpeaking();
