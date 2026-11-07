@@ -8,8 +8,9 @@ RECIPES.forEach(r=>{ PRISTINE_RECIPES_BY_NAME[r.name] = JSON.parse(JSON.stringif
 // Drop any custom entry whose name is already in the permanent RECIPES list (e.g. after
 // a permanent bake-in of a previously-exported recipe) so it doesn't appear twice.
 let customRecipes = JSON.parse(localStorage.getItem('custom_recipes')||'[]');
+const BUILTIN_RECIPE_NAMES = new Set(RECIPES.map(r=>r.name));
 (function pruneCustomRecipesAgainstBuiltins(){
-  const builtinNames = new Set(RECIPES.map(r=>r.name));
+  const builtinNames = BUILTIN_RECIPE_NAMES;
   const before = customRecipes.length;
   customRecipes = customRecipes.filter(r=>!builtinNames.has(r.name));
   if(customRecipes.length !== before) localStorage.setItem('custom_recipes', JSON.stringify(customRecipes));
@@ -429,10 +430,14 @@ function applyShoppingRow(row){
 function applyRecipesRow(row){
   activeRecipesRowId = row.id;
   localStorage.setItem('active_recipes_row', row.id);
-  customRecipes.forEach(r=>{ const idx = RECIPES.findIndex(x=>x.name===r.name); if(idx>-1) RECIPES.splice(idx,1); });
-  customRecipes = row.payload || [];
+  customRecipes.forEach(r=>{ if(BUILTIN_RECIPE_NAMES.has(r.name)) return; const idx = RECIPES.findIndex(x=>x.name===r.name); if(idx>-1) RECIPES.splice(idx,1); });
+  const incoming = Array.isArray(row.payload) ? row.payload : [];
+  // Recipes that are now part of the app's built-in list are dropped from the personal copy,
+  // so they don't appear twice (and the account copy is cleaned up on the next save).
+  customRecipes = incoming.filter(r=>r && !BUILTIN_RECIPE_NAMES.has(r.name));
   localStorage.setItem('custom_recipes', JSON.stringify(customRecipes));
   RECIPES.push(...customRecipes);
+  if(customRecipes.length !== incoming.length && currentUser) setTimeout(()=>{ try{ pushRecipesRow(); }catch(e){} }, 0);
 }
 // ---- Household ("משק בית") ----
 // A household is a group of users that share ALL four data rows (shopping, recipes, fridge/app state, categories)
@@ -1731,10 +1736,11 @@ async function pullRecipeSync(){
     const rows = await res.json();
     if(!rows.length) return;
     customRecipes.forEach(r=>{
+      if(BUILTIN_RECIPE_NAMES.has(r.name)) return;
       const idx = RECIPES.findIndex(x=>x.name===r.name);
       if(idx>-1) RECIPES.splice(idx,1);
     });
-    customRecipes = rows[0].recipes || [];
+    customRecipes = (rows[0].recipes || []).filter(r=>r && !BUILTIN_RECIPE_NAMES.has(r.name));
     localStorage.setItem('custom_recipes', JSON.stringify(customRecipes));
     RECIPES.push(...customRecipes);
     renderAll();
