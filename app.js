@@ -512,7 +512,7 @@ async function loadAccountData(){
     cfg.set(await fetchUserDataRows(cfg.kind));
     const rows = cfg.rows();
     const own = rows.filter(r=>r.owner_id === currentUser.id);
-    let mine = own.find(r=>!r.household_id) || own[0];
+    let mine = own.find(r=>!r.household_id && (cfg.kind !== 'shopping_lists' || (r.payload && r.payload.main))) || own.find(r=>!r.household_id) || own[0];
     const hrow = hid ? rows.find(r=>r.household_id === hid) : null;
     if(!mine && !hrow){
       const { data } = await sbClient.from('user_data').insert({
@@ -954,15 +954,11 @@ function renderAccountBox(){
         <button id="acctLogoutBtn">התנתקות</button>
       </div>
       <div id="householdBox"></div>
-      ${shopPicker}${recPicker}${statePicker}
+      ${recPicker}${statePicker}
       <div class="settings-hint" style="margin:14px 0 6px;font-weight:700;">שיתוף נפרד לפי סוג מידע (מתקדם)</div>
       <div class="acct-picker">
-        <div class="settings-hint" style="font-weight:700;margin-bottom:4px;">שתפו את רשימות הקניות שלכם עם:</div>
-        <div class="add-row">
-          <input type="email" id="shareShoppingEmail" placeholder="אימייל של השותף/ה">
-          <button id="shareShoppingBtn">שתפו</button>
-        </div>
-        <div id="sharedListShopping"></div>
+        <div class="settings-hint" style="font-weight:700;margin-bottom:4px;">רשימות קניות</div>
+        <p class="settings-hint" style="margin:0;">כל רשימה משותפת בנפרד: בלשונית הקניות לוחצים ⋮ ליד הרשימה ← "עם מי הרשימה משותפת".</p>
       </div>
       <div class="acct-picker">
         <div class="settings-hint" style="font-weight:700;margin-bottom:4px;">שתפו את המתכונים שלכם עם:</div>
@@ -1000,10 +996,10 @@ function renderAccountBox(){
   };
   renderHouseholdBox();
   const status = document.getElementById('acctStatus');
-  renderSharedList('sharedListShopping', activeShoppingRowId);
+  if(document.getElementById('sharedListShopping')) renderSharedList('sharedListShopping', activeShoppingRowId);
   renderSharedList('sharedListRecipes', activeRecipesRowId);
   renderSharedList('sharedListState', activeStateRowId);
-  document.getElementById('shareShoppingBtn').onclick = async ()=>{
+  if(document.getElementById('shareShoppingBtn')) document.getElementById('shareShoppingBtn').onclick = async ()=>{
     const email = norm(document.getElementById('shareShoppingEmail').value);
     if(!email) return;
     status.textContent = 'משתפים...';
@@ -1312,13 +1308,37 @@ function showDateModal(message, onSubmit, defaultValue, onClear){
 }
 
 function createShoppingList(){
-  showPromptModal('שם הרשימה החדשה:', (name)=>{
+  showPromptModal('שם הרשימה החדשה:', async (name)=>{
+    const prim = currentUser ? primaryShoppingRow() : null;
+    if(prim && prim.id !== activeShoppingRowId){
+      const firstId = Object.keys(rowListsPayload(prim))[0] || 'main';
+      await activateListRef(prim.id, firstId);
+    }
     const id = 'list_' + Date.now();
     shoppingLists[id] = {name, items: [], bought: [], syncCode: null};
     localStorage.setItem('shopping_lists', JSON.stringify(shoppingLists));
     closeSheet('listsSheet');
     switchShoppingList(id);
     if(shopOverviewEnabled()){ shopView = 'list'; renderShoppingPanel(); }
+  });
+}
+function deleteListRow(rowId, listId){
+  const l = shoppingLists[listId];
+  if(!l) return;
+  showConfirmModal(`למחוק את הרשימה "${l.name}"? היא תימחק גם אצל מי שהיא משותפת איתו. הפעולה לא הפיכה.`, async ()=>{
+    clearTimeout(shoppingPushTimer); shoppingPushPending = false;
+    let ok = false;
+    try{
+      const { error } = await sbClient.from('user_data').delete().eq('id', rowId);
+      ok = !error;
+    }catch(e){}
+    if(!ok){ try{ await sbClient.from('user_data').update({ payload:{}, updated_at: new Date().toISOString() }).eq('id', rowId); ok = true; }catch(e){} }
+    accountShoppingRows = accountShoppingRows.filter(r=>r.id !== rowId);
+    const prim = primaryShoppingRow();
+    const target = allListRefs().find(r=>r.rowId !== rowId) || null;
+    if(prim){ subscribeShoppingRealtime(null); activeShoppingRowId = null; await activateListRef(prim.id, (prim.payload && prim.payload.main) ? 'main' : (target ? target.listId : 'main')); }
+    if(showingShopOverview() || shopOverviewEnabled()){ shopView = 'overview'; }
+    refreshShoppingViews();
   });
 }
 function deleteShoppingList(id){
@@ -1347,11 +1367,13 @@ function listStats(id){
   return { total: items.length, done: items.filter(i=>bought.has(i)).length };
 }
 function renderListSwitcher(){
-  const cards = Object.entries(shoppingLists).map(([id,list])=>{
-    const { total, done } = listStats(id);
+  const cards = allListRefs().map(ref=>{
+    const id = ref.listId, list = ref.list;
+    const { total, done } = refStats(ref);
     const pct = total ? Math.round(done/total*100) : 0;
+    const isActive = id === activeListId && (ref.rowId || null) === (activeShoppingRowId || null);
     return `
-      <button type="button" class="list-card${id===activeListId?' active':''}" data-id="${escAttr(id)}">
+      <button type="button" class="list-card${isActive?' active':''}" data-id="${escAttr(id)}" data-row="${escAttr(ref.rowId||'')}">
         <span class="list-card-name">${escHtml(list.name)}</span>
         <span class="list-card-count">${total ? `${done}/${total}` : 'ריקה'}</span>
         <span class="list-card-bar"><i style="width:${pct}%"></i></span>
@@ -1370,7 +1392,7 @@ function wireListSwitcher(){
   const back = document.getElementById('ovBackBtn');
   if(back) back.onclick = ()=>{ if(history.state && history.state.shopList){ history.back(); } else backToShopOverview(); };
   document.querySelectorAll('.list-card[data-id]').forEach(btn=>{
-    btn.onclick = ()=> switchShoppingList(btn.dataset.id);
+    btn.onclick = ()=> activateListRef(btn.dataset.row || activeShoppingRowId, btn.dataset.id);
   });
   const addBtn = document.getElementById('addListBtn');
   if(addBtn) addBtn.onclick = createShoppingList;
@@ -1561,17 +1583,29 @@ function renameShoppingList(id){
     if(document.getElementById('listsSheet')) openListsSheet();
   }, l.name);
 }
-function openListMenu(id){
+async function openListMenu(id, rowId){
+  if(rowId && rowId !== activeShoppingRowId){
+    const ok = await activateListRef(rowId, id);
+    if(!ok) return;
+    if(showingShopOverview()) renderShoppingPanel();
+  }
   const l = shoppingLists[id];
   if(!l) return;
+  const thisRow = rowById(activeShoppingRowId);
+  const prim = primaryShoppingRow();
+  const ownSingleListRow = thisRow && thisRow !== prim && rowShareKind(thisRow) === 'own' && Object.keys(shoppingLists).length === 1;
+  const canDelete = ownSingleListRow || id !== 'main';
+  const foreign = thisRow && rowShareKind(thisRow) === 'foreign';
   const { done, total } = listStats(id);
   const ov = openSheet('listMenuSheet', `
     <div class="sheet-head"><h3>${escHtml(l.name)}</h3><button type="button" class="sheet-x" id="lmClose" aria-label="סגירה">×</button></div>
+    <button type="button" class="lm-row" id="lmShare">👥  עם מי הרשימה משותפת</button>
     <button type="button" class="lm-row" id="lmRename">✏️  שינוי שם</button>
-    ${id!=='main' && total ? '<button type="button" class="lm-row" id="lmTransfer">➡️  בחרו פריטים לרשימה הראשית</button>' : ''}
+    ${id!=='main' && total && shoppingLists.main ? '<button type="button" class="lm-row" id="lmTransfer">➡️  בחרו פריטים לרשימה הראשית</button>' : ''}
     <button type="button" class="lm-row" id="lmClear" ${done?'':'disabled'}>🧹  מחקו פריטים שסומנו (${done})</button>
-    ${id==='main' ? '' : '<button type="button" class="lm-row danger" id="lmDelete">🗑  מחיקת הרשימה</button>'}`, 'top');
+    ${canDelete && !foreign ? '<button type="button" class="lm-row danger" id="lmDelete">🗑  מחיקת הרשימה</button>' : ''}`, 'top');
   ov.querySelector('#lmClose').onclick = ()=> ov.remove();
+  ov.querySelector('#lmShare').onclick = ()=>{ ov.remove(); openListShareSheet(activeShoppingRowId, id); };
   ov.querySelector('#lmRename').onclick = ()=>{ ov.remove(); renameShoppingList(id); };
   const tr = ov.querySelector('#lmTransfer');
   if(tr) tr.onclick = ()=>{ ov.remove(); openTransferToMainSheet(id); };
@@ -1584,7 +1618,7 @@ function openListMenu(id){
     });
   };
   const del = ov.querySelector('#lmDelete');
-  if(del) del.onclick = ()=>{ ov.remove(); deleteShoppingList(id); };
+  if(del) del.onclick = ()=>{ ov.remove(); if(ownSingleListRow) deleteListRow(activeShoppingRowId, id); else deleteShoppingList(id); };
 }
 
 /** Pick items from a saved/secondary list and merge them into the main shopping list. */
@@ -1696,26 +1730,29 @@ function transferItemsToMain(sourceId, names, removeFromSource){
   pushSync();
 }
 function openListsSheet(){
-  const card = (id)=>{
-    const l = shoppingLists[id];
-    const { total, done } = listStats(id);
+  const card = (ref)=>{
+    const id = ref.listId, l = ref.list;
+    const { total, done } = refStats(ref);
     const pct = total ? Math.round(done/total*100) : 0;
+    const isActive = id === activeListId && (ref.rowId || null) === (activeShoppingRowId || null);
+    const share = ref.row ? shareInfoForRow(ref.row) : null;
     return `
-      <div class="lb-card${id===activeListId?' active':''}">
-        <button type="button" class="lb-main" data-id="${escAttr(id)}">
+      <div class="lb-card${isActive?' active':''}">
+        <button type="button" class="lb-main" data-id="${escAttr(id)}" data-row="${escAttr(ref.rowId||'')}">
           <span class="lb-name">${escHtml(l.name)}</span>
           <span class="lb-row"><span class="lb-count">${total ? `${done}/${total}` : 'ריקה'}</span><span class="lb-bar"><i style="width:${pct}%"></i></span></span>
+          ${share && share.text ? `<span class="ov-share${share.shared?' shared':''}">${share.shared?'👥':'🔒'} ${escHtml(share.text)}</span>` : ''}
         </button>
-        <button type="button" class="lb-menu" data-id="${escAttr(id)}" aria-label="אפשרויות הרשימה">⋮</button>
+        <button type="button" class="lb-menu" data-id="${escAttr(id)}" data-row="${escAttr(ref.rowId||'')}" aria-label="אפשרויות הרשימה">⋮</button>
       </div>`;
   };
   const ov = openSheet('listsSheet', `
     <div class="sheet-head"><h3>הרשימות שלי</h3><button type="button" class="sheet-x" id="lbClose" aria-label="סגירה">×</button></div>
-    <div class="lb-list">${Object.keys(shoppingLists).map(card).join('')}</div>
+    <div class="lb-list">${allListRefs().map(card).join('')}</div>
     <div class="lb-foot"><button type="button" id="lbNew">＋ רשימה חדשה</button></div>`, 'tall');
   ov.querySelector('#lbClose').onclick = ()=> ov.remove();
-  ov.querySelectorAll('.lb-main').forEach(b=>{ b.onclick = ()=>{ switchShoppingList(b.dataset.id); ov.remove(); }; });
-  ov.querySelectorAll('.lb-menu').forEach(b=>{ b.onclick = ()=> openListMenu(b.dataset.id); });
+  ov.querySelectorAll('.lb-main').forEach(b=>{ b.onclick = ()=>{ ov.remove(); activateListRef(b.dataset.row || activeShoppingRowId, b.dataset.id); }; });
+  ov.querySelectorAll('.lb-menu').forEach(b=>{ b.onclick = ()=> openListMenu(b.dataset.id, b.dataset.row || null); });
   ov.querySelector('#lbNew').onclick = createShoppingList;
 }
 function saveFavorites(){ localStorage.setItem('favorites', JSON.stringify([...favorites])); scheduleAppStatePush(); }
@@ -2971,6 +3008,269 @@ function renderDailyRecipe(){
   el.appendChild(card);
 }
 
+// ---- Per-list sharing ----
+// Lists are stored in user_data rows (kind 'shopping_lists'); sharing works per row. A list that should be shared
+// with its own people is moved into a row of its own, and that row is shared. The lists of every shopping row the
+// account can see are shown together; opening a list makes its row the "active" (synced, realtime) row.
+function rowById(rowId){ return accountShoppingRows.find(r=>r.id===rowId) || null; }
+function primaryShoppingRow(){
+  const hid = myHousehold ? myHousehold.id : null;
+  return (hid && accountShoppingRows.find(r=>r.household_id === hid))
+    || accountShoppingRows.find(r=>currentUser && r.owner_id === currentUser.id && !r.household_id && r.payload && r.payload.main)
+    || accountShoppingRows.find(r=>currentUser && r.owner_id === currentUser.id && !r.household_id)
+    || null;
+}
+function rowListsPayload(row){
+  if(!row || row.id === activeShoppingRowId){ syncLiveSetsIntoList(); return shoppingLists; }
+  return (row.payload && typeof row.payload === 'object') ? row.payload : {};
+}
+function allListRefs(){
+  if(!currentUser || !activeShoppingRowId || !accountShoppingRows.length){
+    return Object.keys(shoppingLists).map(id=>({ rowId: activeShoppingRowId, listId:id, list: shoppingLists[id], row:null }));
+  }
+  const prim = primaryShoppingRow();
+  const rank = (r)=> r === prim ? 0 : (r.owner_id === currentUser.id ? 1 : 2);
+  const rows = [...accountShoppingRows].sort((a,b)=> rank(a) - rank(b));
+  const refs = [];
+  rows.forEach(row=>{
+    const p = rowListsPayload(row);
+    Object.keys(p).forEach(id=>{ if(p[id]) refs.push({ rowId: row.id, listId: id, list: p[id], row }); });
+  });
+  return refs;
+}
+function refStats(ref){
+  if(ref.rowId === activeShoppingRowId) return listStats(ref.listId);
+  const items = ref.list.items || [], b = new Set(ref.list.bought || []);
+  return { total: items.length, done: items.filter(i=>b.has(i)).length };
+}
+function rowShareKind(row){
+  if(!currentUser || !row) return 'local';
+  if(myHousehold && row.household_id && row.household_id === myHousehold.id) return 'household';
+  if(row.owner_id !== currentUser.id) return 'foreign';
+  return 'own';
+}
+async function fetchSharedEmails(rowId, force){
+  if(!force && sharedEmailsCache[rowId] && !sharedEmailsCache[rowId].error) return sharedEmailsCache[rowId].emails;
+  const { data, error } = await sbClient.rpc('get_shared_emails', { row_id: rowId });
+  sharedEmailsCache[rowId] = error ? { error:true, emails:[] } : { error:false, emails:(Array.isArray(data) ? data : []) };
+  if(error) throw error;
+  return sharedEmailsCache[rowId].emails;
+}
+// e-mails a row is currently shared with (not including me)
+async function currentShareEmails(row){
+  const kind = rowShareKind(row);
+  const me = (currentUser.email || '').toLowerCase();
+  if(kind === 'household') return householdMembers.map(m=>(m.email||'').toLowerCase()).filter(e=>e && e !== me);
+  if(kind === 'own') return (await fetchSharedEmails(row.id, true)).map(e=>String(e).toLowerCase()).filter(e=>e !== me);
+  return [];
+}
+// sync text for a row, for the list cards
+function shareInfoForRow(row){
+  const kind = rowShareKind(row);
+  if(kind === 'local') return { text:'נשמרת רק במכשיר הזה', shared:false };
+  if(kind === 'foreign') return { text:'שותפה איתכם על ידי ' + shortName(row.owner_email), shared:true };
+  if(kind === 'household'){
+    const others = householdMembers.filter(m=>m.user_id !== currentUser.id).map(m=>shortName(m.email));
+    return others.length ? { text:'משותפת עם ' + others.join(', '), shared:true } : { text:'רק אתם', shared:false };
+  }
+  const c = sharedEmailsCache[row.id];
+  if(!c){
+    if(!shareInfoForRow._loading[row.id] && sbClient){
+      shareInfoForRow._loading[row.id] = true;
+      fetchSharedEmails(row.id).catch(()=>{}).finally(()=>{ delete shareInfoForRow._loading[row.id]; refreshListPickers(); });
+    }
+    return { text:'', shared:false };
+  }
+  if(c.error || !c.emails.length) return { text:'רק אתם', shared:false };
+  return { text:'משותפת עם ' + c.emails.map(shortName).join(', '), shared:true };
+}
+shareInfoForRow._loading = {};
+function refreshListPickers(){
+  if(document.getElementById('shoppingPanel') && activeTab === 'shopping') renderShoppingPanel();
+  if(document.getElementById('listsSheet')) openListsSheet();
+}
+// keep the cached copies of the other (non-active) rows reasonably fresh for counts on the cards
+let shoppingRowsRefreshedAt = 0;
+async function refreshShoppingRowsCache(force){
+  if(!currentUser || !sbClient) return;
+  if(!force && Date.now() - shoppingRowsRefreshedAt < 20000) return;
+  shoppingRowsRefreshedAt = Date.now();
+  try{
+    const rows = await fetchUserDataRows('shopping_lists');
+    if(!rows.length) return;
+    const before = JSON.stringify(accountShoppingRows.map(r=>[r.id, r.id===activeShoppingRowId ? null : r.payload]));
+    accountShoppingRows = rows;
+    const after = JSON.stringify(accountShoppingRows.map(r=>[r.id, r.id===activeShoppingRowId ? null : r.payload]));
+    if(before !== after) refreshListPickers();
+  }catch(e){}
+}
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible') refreshShoppingRowsCache(true); });
+
+// Make (rowId, listId) the open list — switching the synced row when the list lives in another row.
+async function activateListRef(rowId, listId){
+  if(!currentUser || !rowId || rowId === activeShoppingRowId){
+    if(listId !== activeListId) switchShoppingList(listId);
+    return true;
+  }
+  if(shoppingPushPending || shoppingPushInFlight){ try{ await pushShoppingRow(); }catch(e){} }
+  const leaving = rowById(activeShoppingRowId);
+  if(leaving){ syncLiveSetsIntoList(); leaving.payload = cloneJSON(shoppingLists); }
+  let row = rowById(rowId);
+  try{
+    const { data } = await sbClient.from('user_data').select('*').eq('id', rowId).single();
+    if(data){ row = data; const i = accountShoppingRows.findIndex(r=>r.id===rowId); if(i>-1) accountShoppingRows[i] = data; else accountShoppingRows.push(data); }
+  }catch(e){}
+  if(!row) return false;
+  try{ localStorage.setItem('active_shopping_list', listId); }catch(e){}
+  activeListId = listId;
+  applyShoppingRow(row);
+  if(shoppingLists[listId] && activeListId !== listId){ activeListId = listId; adoptShoppingLists(shoppingLists); }
+  renderShoppingPanel();
+  renderTabBadges();
+  return true;
+}
+
+// Move one list out of a row that holds other lists (or the household row) into a new row of its own.
+async function detachListToOwnRow(rowId, listId){
+  if(rowId === activeShoppingRowId && (shoppingPushPending || shoppingPushInFlight)) await pushShoppingRow();
+  const { data: src, error: e1 } = await sbClient.from('user_data').select('payload, updated_at').eq('id', rowId).single();
+  if(e1 || !src) throw (e1 || new Error('row not found'));
+  const list = (src.payload || {})[listId];
+  if(!list) throw new Error('הרשימה לא נמצאה');
+  // 1) copy into a new row first — if anything fails later, nothing is lost
+  const { data: created, error: e2 } = await sbClient.from('user_data').insert({
+    owner_id: currentUser.id, owner_email: currentUser.email, kind:'shopping_lists', payload: { [listId]: cloneJSON(list) }
+  }).select().single();
+  if(e2 || !created) throw (e2 || new Error('יצירת הרשימה נכשלה'));
+  accountShoppingRows.push(created);
+  // 2) remove it from the source row (compare-and-swap, retried on concurrent edits)
+  let fresh = src, done = false, rest = null, stamp = null;
+  for(let attempt = 0; attempt < 4 && !done; attempt++){
+    if(attempt){ const r = await sbClient.from('user_data').select('payload, updated_at').eq('id', rowId).single(); if(r.error) throw r.error; fresh = r.data; }
+    rest = cloneJSON(fresh.payload || {}); delete rest[listId];
+    stamp = nextStamp(fresh.updated_at);
+    let q = sbClient.from('user_data').update({ payload: rest, updated_at: stamp }).eq('id', rowId);
+    q = fresh.updated_at ? q.eq('updated_at', fresh.updated_at) : q.is('updated_at', null);
+    const { data: upd, error: e3 } = await q.select('updated_at');
+    if(e3) throw e3;
+    done = !!(upd && upd.length);
+  }
+  if(!done) throw new Error('הרשימה נערכה במקביל — נסו שוב');
+  const srcRow = rowById(rowId);
+  if(srcRow){ srcRow.payload = rest; srcRow.updated_at = stamp; }
+  if(rowId === activeShoppingRowId){
+    syncLiveSetsIntoList();
+    const wasOpen = activeListId === listId;
+    delete shoppingLists[listId];
+    lastShoppingUpdatedAt = stamp;
+    setShoppingBase(rest, rowId);
+    adoptShoppingLists(shoppingLists);
+    if(wasOpen) await activateListRef(created.id, listId);
+  }
+  return created;
+}
+
+// Add and/or remove one person on a list. Returns the row the list now lives in.
+async function changeListSharing(rowId, listId, addEmail, removeEmail){
+  let row = rowById(rowId);
+  if(!row) throw new Error('הרשימה לא נמצאה');
+  const kind = rowShareKind(row);
+  if(kind === 'foreign' || kind === 'local') throw new Error('אי אפשר לשנות את השיתוף של הרשימה הזו');
+  const current = await currentShareEmails(row);
+  const desired = new Set(current);
+  if(addEmail) desired.add(addEmail.toLowerCase());
+  if(removeEmail) desired.delete(removeEmail.toLowerCase());
+  if(desired.size === current.length && current.every(e=>desired.has(e))) return row;
+  let cur = new Set(current);
+  if(kind === 'household' || Object.keys(rowListsPayload(row)).length > 1){
+    row = await detachListToOwnRow(rowId, listId);
+    cur = new Set();
+  }
+  for(const e of desired){
+    if(cur.has(e)) continue;
+    const r = await shareRow(row.id, e);
+    if(r !== 'ok') throw new Error(r === 'user not found' ? `${e} עדיין לא רשום/ה באפליקציה — צריך קודם להתחבר אליה פעם אחת` : r);
+  }
+  for(const e of cur){
+    if(desired.has(e)) continue;
+    const { data, error } = await sbClient.rpc('unshare_data_with_email', { row_id: row.id, target_email: e });
+    if(error) throw error;
+    if(data !== 'ok') throw new Error(data);
+  }
+  delete sharedEmailsCache[row.id];
+  try{ await fetchSharedEmails(row.id, true); }catch(e){}
+  return row;
+}
+
+function openListShareSheet(rowId, listId){
+  const draw = async (statusText)=>{
+    const row = rowById(rowId);
+    const ref = allListRefs().find(r=>r.rowId === rowId && r.listId === listId);
+    const name = ref ? ref.list.name : '';
+    const kind = rowShareKind(row);
+    let body = '';
+    if(kind === 'local'){
+      body = `<p class="settings-hint">כדי לשתף רשימה צריך להתחבר לחשבון (הגדרות ← חשבון ושיתוף).</p>`;
+    } else if(kind === 'foreign'){
+      body = `<p class="settings-hint">הרשימה שותפה איתכם על ידי <b dir="ltr">${escHtml(row.owner_email)}</b>. רק הוא/היא יכול/ה לשנות עם מי היא משותפת.</p>`;
+    } else {
+      let people = [];
+      try{ people = await currentShareEmails(row); }catch(e){ statusText = 'לא ניתן לטעון כרגע עם מי הרשימה משותפת'; }
+      const me = (currentUser.email||'').toLowerCase();
+      const suggestions = householdMembers.map(m=>(m.email||'').toLowerCase()).filter(e=>e && e !== me && !people.includes(e));
+      const multi = Object.keys(rowListsPayload(row)).length > 1;
+      const note = kind === 'household'
+        ? 'כרגע הרשימה משותפת עם כל משק הבית. שינוי כאן יחול רק על הרשימה הזו — שאר הרשימות יישארו משותפות כרגיל.'
+        : (multi ? 'שינוי כאן יחול רק על הרשימה הזו.' : '');
+      body = `
+        ${note ? `<p class="settings-hint" style="margin:0 0 10px;">${note}</p>` : ''}
+        <div class="sh-title">משותפת עם</div>
+        ${people.length ? people.map(e=>`
+          <div class="sh-row"><span class="sh-avatar">${escHtml(shortName(e).charAt(0).toUpperCase())}</span>
+            <span class="sh-email" dir="ltr">${escHtml(e)}</span>
+            <button type="button" class="sh-remove" data-email="${escAttr(e)}" aria-label="הסרת ${escAttr(e)}">הסירו</button></div>`).join('')
+          : '<p class="custom-empty" style="margin:4px 0 8px;">רק אתם — הרשימה לא משותפת עם אף אחד.</p>'}
+        ${suggestions.length ? `<div class="sh-title" style="margin-top:14px;">הוסיפו מבני הבית</div>
+          <div class="sh-sugg">${suggestions.map(e=>`<button type="button" class="sh-add-chip" data-email="${escAttr(e)}">＋ ${escHtml(shortName(e))}</button>`).join('')}</div>` : ''}
+        <div class="sh-title" style="margin-top:14px;">הוסיפו לפי אימייל</div>
+        <div class="add-row" style="margin-bottom:4px;">
+          <input type="email" id="shEmail" placeholder="אימייל של מי שרשום/ה באפליקציה" dir="ltr">
+          <button type="button" id="shAddBtn">הוסיפו</button>
+        </div>`;
+    }
+    const ov = openSheet('listShareSheet', `
+      <div class="sheet-head"><h3>שיתוף · ${escHtml(name)}</h3><button type="button" class="sheet-x" id="shClose" aria-label="סגירה">×</button></div>
+      ${body}
+      <div class="cam-status" id="shStatus">${escHtml(statusText || '')}</div>`, 'top');
+    ov.querySelector('#shClose').onclick = ()=> ov.remove();
+    const run = async (add, remove)=>{
+      const st = ov.querySelector('#shStatus');
+      if(add && add.toLowerCase() === (currentUser.email||'').toLowerCase()){ st.textContent = 'זה האימייל שלכם 🙂'; return; }
+      ov.querySelectorAll('button').forEach(b=>{ if(b.id !== 'shClose') b.disabled = true; });
+      st.textContent = 'מעדכנים...';
+      try{
+        const newRow = await changeListSharing(rowId, listId, add, remove);
+        rowId = newRow.id;
+        refreshListPickers();
+        draw(add ? `✓ ${shortName(add)} נוסף/ה` : `✓ ${shortName(remove)} הוסר/ה`);
+      }catch(e){
+        draw('שגיאה: ' + (e.message || 'השינוי נכשל'));
+      }
+    };
+    ov.querySelectorAll('.sh-remove').forEach(b=>{
+      b.onclick = ()=> showConfirmModal(`להפסיק לשתף את "${name}" עם ${b.dataset.email}?`, ()=> run(null, b.dataset.email));
+    });
+    ov.querySelectorAll('.sh-add-chip').forEach(b=>{ b.onclick = ()=> run(b.dataset.email, null); });
+    const addBtn = ov.querySelector('#shAddBtn');
+    if(addBtn){
+      const go = ()=>{ const v = norm(ov.querySelector('#shEmail').value); if(v) run(v, null); };
+      addBtn.onclick = go;
+      ov.querySelector('#shEmail').addEventListener('keydown', e=>{ if(e.key === 'Enter') go(); });
+    }
+  };
+  draw('');
+}
+
 // ---- Lists overview: when Shopping is the only tab, the app opens on a page of all lists ----
 let shopView = 'overview';        // 'overview' | 'list' — only used while overview mode is on
 function shopOverviewEnabled(){ const v = visibleContentTabs(); return v.length === 1 && v[0] === 'shopping'; }
@@ -2998,8 +3298,8 @@ function shoppingShareInfo(){
   if(c.error || !c.emails.length) return { text:'רק אתם', shared:false };
   return { text:'משותפת עם ' + c.emails.map(shortName).join(', '), shared:true };
 }
-function openShoppingListFromOverview(id){
-  if(id !== activeListId) switchShoppingList(id);
+async function openShoppingListFromOverview(id, rowId){
+  await activateListRef(rowId || activeShoppingRowId, id);
   shopView = 'list';
   try{ history.pushState({ shopList:true }, ''); }catch(e){}
   renderShoppingPanel();
@@ -3013,29 +3313,30 @@ function backToShopOverview(){
 window.addEventListener('popstate', ()=>{ if(shopOverviewEnabled() && shopView === 'list') backToShopOverview(); });
 function renderShoppingOverview(el){
   syncLiveSetsIntoList();
-  const share = shoppingShareInfo();
-  const cards = Object.keys(shoppingLists).map(id=>{
-    const l = shoppingLists[id];
-    const { total, done } = listStats(id);
+  refreshShoppingRowsCache();
+  const cards = allListRefs().map(ref=>{
+    const id = ref.listId, l = ref.list;
+    const share = ref.row ? shareInfoForRow(ref.row) : shoppingShareInfo();
+    const { total, done } = refStats(ref);
     const open = total - done;
     const pct = total ? Math.round(done/total*100) : 0;
     const countText = total ? `${open} פריטים לקנות${done ? ` · ${done} נקנו` : ''}` : 'רשימה ריקה';
     return `
       <div class="ov-card">
-        <button type="button" class="ov-main" data-id="${escAttr(id)}">
+        <button type="button" class="ov-main" data-id="${escAttr(id)}" data-row="${escAttr(ref.rowId||'')}">
           <span class="ov-top"><span class="ov-name">${escHtml(l.name)}</span><span class="ov-open${open?'':' zero'}">${open}</span></span>
           <span class="ov-count">${escHtml(countText)}</span>
           <span class="ov-bar"><i style="width:${pct}%"></i></span>
           ${share.text ? `<span class="ov-share${share.shared?' shared':''}">${share.shared?'👥':'🔒'} ${escHtml(share.text)}</span>` : ''}
         </button>
-        <button type="button" class="ov-menu" data-id="${escAttr(id)}" aria-label="אפשרויות הרשימה">⋮</button>
+        <button type="button" class="ov-menu" data-id="${escAttr(id)}" data-row="${escAttr(ref.rowId||'')}" aria-label="אפשרויות הרשימה">⋮</button>
       </div>`;
   }).join('');
   el.innerHTML = `
     <div class="ov-list">${cards}</div>
     <button type="button" class="ov-new" id="ovNewBtn">＋ רשימה חדשה</button>`;
-  el.querySelectorAll('.ov-main').forEach(b=>{ b.onclick = ()=> openShoppingListFromOverview(b.dataset.id); });
-  el.querySelectorAll('.ov-menu').forEach(b=>{ b.onclick = ()=> openListMenu(b.dataset.id); });
+  el.querySelectorAll('.ov-main').forEach(b=>{ b.onclick = ()=> openShoppingListFromOverview(b.dataset.id, b.dataset.row || null); });
+  el.querySelectorAll('.ov-menu').forEach(b=>{ b.onclick = ()=> openListMenu(b.dataset.id, b.dataset.row || null); });
   el.querySelector('#ovNewBtn').onclick = createShoppingList;
   renderShopManageBox();
 }

@@ -649,6 +649,7 @@ async function start(){
     }catch(e){ /* households not set up — personal mode */ }
     const all = rows || [];
     let row = (hid && all.find(r=>r.household_id === hid))
+      || all.find(r=>r.owner_id===user.id && !r.household_id && r.payload && r.payload.main)
       || all.find(r=>r.owner_id===user.id && !r.household_id)
       || all.find(r=>r.owner_id===user.id)
       || all[0];
