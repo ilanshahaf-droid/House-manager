@@ -94,7 +94,30 @@ let readyNowAutoApplied = false;
 let isDark = localStorage.getItem('theme') === 'dark';
 let showCheckedShop = false;
 let smHideChecked = localStorage.getItem('sm_hide_checked') !== '0'; // default: hide checked in supermarket mode
-let simpleMode = localStorage.getItem('simple_mode') === '1';
+// ---- Display layout: which tabs show, where Settings lives, which recipe sections show ----
+// (replaces the old on/off "simple mode"; someone who had simple mode on keeps the same layout)
+const CONTENT_TABS = ['shopping', 'recipes', 'fridge'];
+function defaultTabPrefs(){ return { shopping:true, recipes:true, fridge:true, settingsAs:'tab', weekPlan:true, daily:true }; }
+function normalizeTabPrefs(p){
+  const d = defaultTabPrefs();
+  const out = Object.assign({}, d, (p && typeof p === 'object') ? p : {});
+  CONTENT_TABS.forEach(t=>{ out[t] = out[t] !== false; });
+  out.weekPlan = out.weekPlan !== false; out.daily = out.daily !== false;
+  if(out.settingsAs !== 'icon') out.settingsAs = 'tab';
+  if(!CONTENT_TABS.some(t=>out[t])) out.shopping = true;        // never hide everything
+  return out;
+}
+let tabPrefs = (()=>{
+  try{ const saved = JSON.parse(localStorage.getItem('tab_prefs') || 'null'); if(saved) return normalizeTabPrefs(saved); }catch(e){}
+  const p = defaultTabPrefs();
+  if(localStorage.getItem('simple_mode') === '1'){ p.fridge = false; p.weekPlan = false; p.daily = false; }
+  return p;
+})();
+function visibleContentTabs(){ return CONTENT_TABS.filter(t=>tabPrefs[t]); }
+function saveTabPrefs(){
+  localStorage.setItem('tab_prefs', JSON.stringify(tabPrefs));
+  localStorage.setItem('simple_mode', tabPrefs.fridge ? '0' : '1');   // keeps older app versions roughly in step
+}
 let tonightOffset = 0;
 const SUPABASE_URL = 'https://pznpibrlcbjpcoxagxns.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6bnBpYnJsY2JqcGNveGFneG5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5NjEzMjUsImV4cCI6MjEwMjUzNzMyNX0.dvfKlGyI1U_E7G5POQJkLn28gky7cTyJbQqT3Mie_YU';
@@ -1054,7 +1077,14 @@ function applyDisplayPrefs(prefs){
   let changed = false;
   if(typeof prefs.cookFont === 'string' && COOK_FONTS.some(f=>f.id === prefs.cookFont) && prefs.cookFont !== cookFont){ cookFont = prefs.cookFont; localStorage.setItem('cook_font', cookFont); applyCookTypography(); }
   if(typeof prefs.cookScale === 'number' && COOK_SCALES.includes(prefs.cookScale) && prefs.cookScale !== cookScale){ cookScale = prefs.cookScale; localStorage.setItem('cook_scale', String(cookScale)); applyCookTypography(); }
-  if(typeof prefs.simple === 'boolean' && prefs.simple !== simpleMode){ simpleMode = prefs.simple; localStorage.setItem('simple_mode', simpleMode ? '1' : '0'); changed = true; }
+  if(prefs.tabs && typeof prefs.tabs === 'object'){
+    const next = normalizeTabPrefs(prefs.tabs);
+    if(JSON.stringify(next) !== JSON.stringify(tabPrefs)){ tabPrefs = next; saveTabPrefs(); changed = true; }
+  } else if(typeof prefs.simple === 'boolean'){
+    // saved by an older version that only knew "simple mode"
+    const next = normalizeTabPrefs(Object.assign({}, tabPrefs, { fridge: !prefs.simple, weekPlan: !prefs.simple, daily: !prefs.simple }));
+    if(JSON.stringify(next) !== JSON.stringify(tabPrefs)){ tabPrefs = next; saveTabPrefs(); changed = true; }
+  }
   if(typeof prefs.dark === 'boolean' && prefs.dark !== isDark){ isDark = prefs.dark; saveTheme(); changed = true; }
   if(changed){ applyTheme(); applySimpleMode(); }
 }
@@ -1064,7 +1094,7 @@ function applyDisplayPrefsFromUser(user){
 async function saveDisplayPrefs(){
   if(!currentUser || !sbClient) return;
   try{
-    const { data, error } = await sbClient.auth.updateUser({ data: { display_prefs: { simple: simpleMode, dark: isDark, cookFont, cookScale } } });
+    const { data, error } = await sbClient.auth.updateUser({ data: { display_prefs: { tabs: tabPrefs, simple: !tabPrefs.fridge, dark: isDark, cookFont, cookScale } } });
     if(!error && data && data.user) currentUser = data.user;
   }catch(e){ /* offline — this device keeps its setting; it will be sent next time it changes */ }
 }
@@ -3669,12 +3699,23 @@ document.getElementById('cookTimerFabBtn').onclick = ()=>{
   document.getElementById('cookTimerPanel').classList.toggle('open', cookState.timerPanelOpen);
 };
 
-function applySimpleMode(){
-  document.body.classList.toggle('simple-mode', simpleMode);
-  const toggle = document.getElementById('simpleModeToggle');
-  if(toggle) toggle.checked = simpleMode;
-  // If fridge tab was active and is now hidden, jump to shopping
-  if(simpleMode && activeTab === 'fridge') switchTab('shopping');
+function applySimpleMode(){   // name kept: called from several places; applies the whole display layout
+  const b = document.body;
+  CONTENT_TABS.forEach(t=> b.classList.toggle('hide-tab-' + t, !tabPrefs[t]));
+  b.classList.toggle('settings-as-icon', tabPrefs.settingsAs === 'icon');
+  b.classList.toggle('hide-weekplan', !tabPrefs.weekPlan);
+  b.classList.toggle('hide-daily', !tabPrefs.daily);
+  // Bottom bar with a single button is pointless — hide it (the ⚙️ icon still reaches Settings)
+  const barButtons = visibleContentTabs().length + (tabPrefs.settingsAs === 'tab' ? 1 : 0);
+  b.classList.toggle('no-tab-bar', barButtons <= 1);
+  // reflect in the Settings controls
+  document.querySelectorAll('#tabVisOpts input[data-tab]').forEach(i=>{ i.checked = !!tabPrefs[i.dataset.tab]; });
+  document.querySelectorAll('input[name="settingsAs"]').forEach(i=>{ i.checked = i.value === tabPrefs.settingsAs; });
+  document.querySelectorAll('#recipeSectionOpts input[data-sec]').forEach(i=>{ i.checked = !!tabPrefs[i.dataset.sec]; });
+  const gear = document.getElementById('settingsIconBtn');
+  if(gear) gear.classList.toggle('active', activeTab === 'settings');
+  // the open tab was just hidden → move to the first visible one
+  if(CONTENT_TABS.includes(activeTab) && !tabPrefs[activeTab]) switchTab(visibleContentTabs()[0]);
 }
 
 function renderAll(){
@@ -3701,11 +3742,15 @@ function renderAll(){
   if(shoppingModeActive) renderShoppingModeList();
 }
 
-let activeTab = 'shopping'; // always open on the shopping list, regardless of which tab was last used
+let activeTab = 'shopping'; // always open on the shopping list (or the first visible tab if it's hidden), regardless of which tab was last used
 
+let lastContentTab = 'shopping';
 function switchTab(name){
-  if(simpleMode && name === 'fridge') name = 'shopping';
+  if(CONTENT_TABS.includes(name) && !tabPrefs[name]) name = visibleContentTabs()[0] || 'shopping';
+  if(CONTENT_TABS.includes(name)) lastContentTab = name;
   activeTab = name;
+  const gear = document.getElementById('settingsIconBtn');
+  if(gear) gear.classList.toggle('active', name === 'settings');
   localStorage.setItem('active_tab', name);
   document.querySelectorAll('.tab-content').forEach(el=>{
     el.classList.toggle('active', el.id === 'tab-'+name);
@@ -4519,16 +4564,36 @@ document.getElementById('importFileInput').addEventListener('change', async (e)=
   e.target.value = '';
 });
 
-// Simple mode toggle
-const simpleModeToggle = document.getElementById('simpleModeToggle');
-if(simpleModeToggle){
-  simpleModeToggle.checked = simpleMode;
-  simpleModeToggle.onchange = ()=>{
-    simpleMode = !!simpleModeToggle.checked;
-    localStorage.setItem('simple_mode', simpleMode ? '1' : '0');
-    applySimpleMode();
-    saveDisplayPrefs();
+// Display layout controls (Settings → מצב תצוגה)
+function changeTabPrefs(patch){
+  tabPrefs = normalizeTabPrefs(Object.assign({}, tabPrefs, patch));
+  saveTabPrefs();
+  applySimpleMode();
+  saveDisplayPrefs();
+}
+document.querySelectorAll('#tabVisOpts input[data-tab]').forEach(inp=>{
+  inp.onchange = ()=>{
+    const t = inp.dataset.tab;
+    const status = document.getElementById('tabVisStatus');
+    if(!inp.checked && visibleContentTabs().length === 1 && tabPrefs[t]){
+      inp.checked = true;
+      if(status){ status.textContent = 'צריך להשאיר לפחות לשונית אחת'; setTimeout(()=>{ status.textContent = ''; }, 3000); }
+      return;
+    }
+    if(status) status.textContent = '';
+    changeTabPrefs({ [t]: inp.checked });
   };
+});
+document.querySelectorAll('input[name="settingsAs"]').forEach(inp=>{
+  inp.onchange = ()=>{ if(inp.checked) changeTabPrefs({ settingsAs: inp.value }); };
+});
+document.querySelectorAll('#recipeSectionOpts input[data-sec]').forEach(inp=>{
+  inp.onchange = ()=> changeTabPrefs({ [inp.dataset.sec]: inp.checked });
+});
+// ⚙️ in the header: opens Settings; pressed again, goes back to where you were
+const settingsIconBtn = document.getElementById('settingsIconBtn');
+if(settingsIconBtn){
+  settingsIconBtn.onclick = ()=> switchTab(activeTab === 'settings' ? lastContentTab : 'settings');
 }
 const tonightRefreshBtn = document.getElementById('tonightRefreshBtn');
 if(tonightRefreshBtn){

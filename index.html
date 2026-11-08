@@ -34,7 +34,10 @@
           <h1>ניהול משק בית</h1>
         </div>
       </div>
-      <button class="theme-btn" id="themeBtn" title="מצב כהה/בהיר">🌙</button>
+      <div class="header-actions">
+        <button class="theme-btn" id="settingsIconBtn" title="הגדרות" aria-label="הגדרות">⚙️</button>
+        <button class="theme-btn" id="themeBtn" title="מצב כהה/בהיר">🌙</button>
+      </div>
     </div>
   </header>
 
@@ -121,11 +124,24 @@
         <h2>מצב תצוגה</h2><span class="topic-arrow">▾</span>
       </button>
       <div class="topic-body">
-        <div class="settings-subtitle">מצב פשוט — קניות ומתכונים</div>
-        <p class="settings-hint">מסתיר את לשונית המקרר ומצמצם חלקים שפחות רלוונטיים למי שמשתמש בעיקר ברשימת קניות ובמתכונים. כשאתם מחוברים לחשבון, מצב פשוט ומצב כהה נשמרים בחשבון שלכם וחלים על כל המכשירים שלכם (לא על בני משפחה אחרים).</p>
-        <label class="clearcat-item" style="margin-bottom:8px;">
-          <input type="checkbox" id="simpleModeToggle"> הפעילו מצב פשוט
-        </label>
+        <p class="settings-hint">כשאתם מחוברים לחשבון, הבחירות כאן ומצב כהה נשמרים בחשבון שלכם וחלים על כל המכשירים שלכם (לא על בני משפחה אחרים).</p>
+        <div class="settings-subtitle">לשוניות להצגה</div>
+        <div class="disp-opts" id="tabVisOpts">
+          <label class="disp-opt"><input type="checkbox" data-tab="shopping"> <span>🛒 קניות</span></label>
+          <label class="disp-opt"><input type="checkbox" data-tab="recipes"> <span>🍽️ מתכונים</span></label>
+          <label class="disp-opt"><input type="checkbox" data-tab="fridge"> <span>🧊 המקרר</span></label>
+        </div>
+        <div class="cam-status" id="tabVisStatus"></div>
+        <div class="settings-subtitle" style="margin-top:14px;">איפה יופיעו ההגדרות</div>
+        <div class="disp-opts">
+          <label class="disp-opt"><input type="radio" name="settingsAs" value="tab"> <span>⚙️ לשונית בסרגל התחתון</span></label>
+          <label class="disp-opt"><input type="radio" name="settingsAs" value="icon"> <span>⚙️ אייקון בראש המסך</span></label>
+        </div>
+        <div class="settings-subtitle" style="margin-top:14px;">חלקים בלשונית המתכונים</div>
+        <div class="disp-opts" id="recipeSectionOpts">
+          <label class="disp-opt"><input type="checkbox" data-sec="weekPlan"> <span>תוכנית שבועית</span></label>
+          <label class="disp-opt"><input type="checkbox" data-sec="daily"> <span>מתכון היום</span></label>
+        </div>
       </div>
     </div>
 
