@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="theme-color" content="#5B7553">
+<meta name="color-scheme" content="only light">
 <title>הוספה מהירה · ניהול משק בית</title>
 <link rel="manifest" href="quickadd-manifest.json">
 <link rel="icon" href="quickadd-icon-192.png">
@@ -17,6 +18,8 @@
     --paper:#F6F3EA; --ink:#2B2A26; --ink-soft:#6B675E; --line:#E4DFD0;
     --surface:#FFFFFF; --herb:#5B7553; --herb-soft:#E3EADD; --brick:#C1442E; --mustard:#B8842A; --mustard-soft:#F3E6CA;
   }
+  :root{color-scheme:only light;}
+  @media (prefers-color-scheme: dark){ :root{ --supports-own-dark-mode:1; } }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;width:100%;overflow-x:hidden;}
   body{

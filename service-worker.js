@@ -1,4 +1,4 @@
-const CACHE_NAME = 'household-app-v13';
+const CACHE_NAME = 'household-app-v14';
 const APP_SHELL = [
   './',
   './index.html',

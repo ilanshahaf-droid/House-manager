@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="theme-color" content="#5B7553">
+<meta name="color-scheme" content="only light">
+<script>try{ if(localStorage.getItem('theme')==='dark') document.querySelector('meta[name="color-scheme"]').content='dark'; }catch(e){}</script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -110,7 +112,7 @@
   <div class="tab-content active" id="tab-shopping">
     <section style="margin-top:16px;">
       <div class="section-head">
-        <h2 style="margin:0;">רשימת קניות</h2>
+        <h2 style="margin:0;" id="shoppingTitle">רשימת קניות</h2>
         <button class="ranout-toggle" id="openShoppingModeBtn">🔆 מצב קניות</button>
       </div>
       <div class="shopping-panel" id="shoppingPanel"></div>

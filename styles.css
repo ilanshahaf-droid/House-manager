@@ -1,4 +1,5 @@
 :root{
+    color-scheme:only light;
     --paper:#F6F3EA;
     --ink:#2B2A26;
     --ink-soft:#6B675E;
@@ -14,6 +15,7 @@
     --star:#D4A017;
   }
   body.dark{
+    color-scheme:dark;
     --paper:#1A1916;
     --ink:#F0EDE4;
     --ink-soft:#A8A49A;
@@ -2259,3 +2261,30 @@ body.recipes-all #recipesListSection{ margin-top:8px; }
 #cookOverlay .cook-list-steps{ font-family:var(--cook-font, 'Frank Ruhl Libre', serif); font-weight:var(--cook-weight, 400); font-size:calc(34px * var(--cook-scale, 1)); }
 #cookOverlay .cook-ing-text{ font-family:var(--cook-font, 'Assistant', sans-serif); font-weight:var(--cook-weight, 400); font-size:calc(23px * var(--cook-scale, 1)); }
 #cookOverlay.cook-list-mode .cook-step-text{ font-size:calc(34px * var(--cook-scale, 1)); }
+
+/* —— Shopping: overview of all lists (when Shopping is the only tab) —— */
+body.shop-overview #openShoppingModeBtn{ display:none; }
+body.shop-overview #shoppingPanel{ background:none; border:none; box-shadow:none; overflow:visible; }
+.ov-list{ display:flex; flex-direction:column; gap:12px; }
+.ov-card{ display:flex; align-items:stretch; background:var(--surface); border:1px solid var(--line); border-radius:22px; box-shadow:var(--shadow-soft); overflow:hidden; }
+.ov-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:8px; text-align:right; border:none; background:none; color:var(--ink); padding:18px 18px 16px; cursor:pointer; font-family:'Assistant',sans-serif; }
+.ov-main:active{ background:var(--paper); }
+.ov-top{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.ov-name{ font-family:'Frank Ruhl Libre',serif; font-size:22px; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ov-open{ flex-shrink:0; min-width:34px; height:34px; padding:0 8px; border-radius:100px; background:var(--brick); color:#fff; font-weight:800; font-size:16px; display:flex; align-items:center; justify-content:center; }
+.ov-open.zero{ background:var(--herb-soft); color:var(--herb); }
+.ov-count{ font-size:14px; font-weight:600; color:var(--ink-soft); }
+.ov-bar{ display:block; height:8px; border-radius:100px; background:var(--line); overflow:hidden; }
+.ov-bar i{ display:block; height:100%; background:var(--herb); border-radius:100px; }
+.ov-share{ font-size:13px; color:var(--ink-soft); }
+.ov-share.shared{ color:var(--herb); font-weight:700; }
+.ov-menu{ flex-shrink:0; width:50px; border:none; background:none; color:var(--ink-soft); font-size:22px; cursor:pointer; }
+.ov-new{ display:block; width:100%; margin-top:14px; border:1px dashed var(--line); background:none; color:var(--ink-soft); padding:16px; border-radius:22px; font-size:15.5px; font-weight:800; cursor:pointer; font-family:'Assistant',sans-serif; }
+.ov-back{ border:none; background:none; color:var(--herb); font-size:15px; font-weight:800; padding:4px 2px 2px; cursor:pointer; font-family:'Assistant',sans-serif; }
+.ov-current{ font-family:'Frank Ruhl Libre',serif; font-size:20px; font-weight:800; margin:2px 2px 12px; }
+
+/* Tells Samsung Internet / Chrome that this app has its own dark mode (the 🌙 button), so the browser
+   does not repaint it dark by itself. Intentionally changes nothing — the app's own theme always wins. */
+@media (prefers-color-scheme: dark){
+  :root{ --supports-own-dark-mode:1; }
+}

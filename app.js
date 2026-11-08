@@ -1318,6 +1318,7 @@ function createShoppingList(){
     localStorage.setItem('shopping_lists', JSON.stringify(shoppingLists));
     closeSheet('listsSheet');
     switchShoppingList(id);
+    if(shopOverviewEnabled()){ shopView = 'list'; renderShoppingPanel(); }
   });
 }
 function deleteShoppingList(id){
@@ -1366,6 +1367,8 @@ function renderListSwitcher(){
     </div>`;
 }
 function wireListSwitcher(){
+  const back = document.getElementById('ovBackBtn');
+  if(back) back.onclick = ()=>{ if(history.state && history.state.shopList){ history.back(); } else backToShopOverview(); };
   document.querySelectorAll('.list-card[data-id]').forEach(btn=>{
     btn.onclick = ()=> switchShoppingList(btn.dataset.id);
   });
@@ -2012,7 +2015,17 @@ function formatHistory(name){
   return count === 1 ? `בושל לאחרונה ב־${d}` : `בושל ${count} פעמים · לאחרונה ${d}`;
 }
 
+// Samsung Internet / Chrome "dark mode for websites" repaints light pages dark on its own.
+// Declaring the colour scheme the app is actually showing stops that ("only light" = never auto-darken).
+function applyColorSchemeHint(){
+  const v = isDark ? 'dark' : 'only light';
+  let m = document.querySelector('meta[name="color-scheme"]');
+  if(!m){ m = document.createElement('meta'); m.name = 'color-scheme'; document.head.appendChild(m); }
+  m.content = v;
+  document.documentElement.style.colorScheme = v;
+}
 function applyTheme(){
+  applyColorSchemeHint();
   document.body.classList.toggle('dark', isDark);
   document.getElementById('themeBtn').textContent = isDark ? '☀️' : '🌙';
   document.querySelector('meta[name="theme-color"]').content = isDark ? '#1A1916' : '#F6F3EA';
@@ -2958,11 +2971,88 @@ function renderDailyRecipe(){
   el.appendChild(card);
 }
 
+// ---- Lists overview: when Shopping is the only tab, the app opens on a page of all lists ----
+let shopView = 'overview';        // 'overview' | 'list' — only used while overview mode is on
+function shopOverviewEnabled(){ const v = visibleContentTabs(); return v.length === 1 && v[0] === 'shopping'; }
+function showingShopOverview(){ return shopOverviewEnabled() && shopView === 'overview'; }
+function shortName(email){ return String(email || '').split('@')[0]; }
+// "who is this shared with" — all lists live in one synced row, so they share the same people
+function shoppingShareInfo(){
+  if(!currentUser) return { text:'נשמרת רק במכשיר הזה', shared:false };
+  const row = activeShoppingRowId ? ownerOfRow(activeShoppingRowId) : null;
+  if(myHousehold && row && row.household_id){
+    const others = householdMembers.filter(m=>m.user_id !== currentUser.id).map(m=>shortName(m.email));
+    return others.length ? { text:'משותפת עם ' + others.join(', '), shared:true } : { text:'משק בית ' + (myHousehold.name||'') + ' · רק אתם עדיין', shared:false };
+  }
+  if(row && row.owner_id !== currentUser.id) return { text:'שותפה איתכם על ידי ' + shortName(row.owner_email), shared:true };
+  const c = activeShoppingRowId ? sharedEmailsCache[activeShoppingRowId] : null;
+  if(!c){
+    if(activeShoppingRowId && sbClient && !shoppingShareInfo._loading){
+      shoppingShareInfo._loading = true;
+      sbClient.rpc('get_shared_emails', { row_id: activeShoppingRowId }).then(({ data, error })=>{
+        sharedEmailsCache[activeShoppingRowId] = error ? { error:true, emails:[] } : { error:false, emails:(Array.isArray(data) ? data : []) };
+      }).catch(()=>{}).finally(()=>{ shoppingShareInfo._loading = false; if(showingShopOverview()) renderShoppingPanel(); });
+    }
+    return { text:'', shared:false };
+  }
+  if(c.error || !c.emails.length) return { text:'רק אתם', shared:false };
+  return { text:'משותפת עם ' + c.emails.map(shortName).join(', '), shared:true };
+}
+function openShoppingListFromOverview(id){
+  if(id !== activeListId) switchShoppingList(id);
+  shopView = 'list';
+  try{ history.pushState({ shopList:true }, ''); }catch(e){}
+  renderShoppingPanel();
+  window.scrollTo(0, 0);
+}
+function backToShopOverview(){
+  shopView = 'overview';
+  renderShoppingPanel();
+  window.scrollTo(0, 0);
+}
+window.addEventListener('popstate', ()=>{ if(shopOverviewEnabled() && shopView === 'list') backToShopOverview(); });
+function renderShoppingOverview(el){
+  syncLiveSetsIntoList();
+  const share = shoppingShareInfo();
+  const cards = Object.keys(shoppingLists).map(id=>{
+    const l = shoppingLists[id];
+    const { total, done } = listStats(id);
+    const open = total - done;
+    const pct = total ? Math.round(done/total*100) : 0;
+    const countText = total ? `${open} פריטים לקנות${done ? ` · ${done} נקנו` : ''}` : 'רשימה ריקה';
+    return `
+      <div class="ov-card">
+        <button type="button" class="ov-main" data-id="${escAttr(id)}">
+          <span class="ov-top"><span class="ov-name">${escHtml(l.name)}</span><span class="ov-open${open?'':' zero'}">${open}</span></span>
+          <span class="ov-count">${escHtml(countText)}</span>
+          <span class="ov-bar"><i style="width:${pct}%"></i></span>
+          ${share.text ? `<span class="ov-share${share.shared?' shared':''}">${share.shared?'👥':'🔒'} ${escHtml(share.text)}</span>` : ''}
+        </button>
+        <button type="button" class="ov-menu" data-id="${escAttr(id)}" aria-label="אפשרויות הרשימה">⋮</button>
+      </div>`;
+  }).join('');
+  el.innerHTML = `
+    <div class="ov-list">${cards}</div>
+    <button type="button" class="ov-new" id="ovNewBtn">＋ רשימה חדשה</button>`;
+  el.querySelectorAll('.ov-main').forEach(b=>{ b.onclick = ()=> openShoppingListFromOverview(b.dataset.id); });
+  el.querySelectorAll('.ov-menu').forEach(b=>{ b.onclick = ()=> openListMenu(b.dataset.id); });
+  el.querySelector('#ovNewBtn').onclick = createShoppingList;
+  renderShopManageBox();
+}
+
 function renderShoppingPanel(){
   const el = document.getElementById('shoppingPanel');
+  document.body.classList.toggle('shop-overview', showingShopOverview());
+  const titleEl = document.getElementById('shoppingTitle');
+  if(titleEl) titleEl.textContent = showingShopOverview() ? 'הרשימות שלי' : 'רשימת קניות';
+  if(showingShopOverview()){ renderShoppingOverview(el); return; }
 
   // List switcher + toolbar for adding — sync/import/share now live in Settings
-  let html = renderListSwitcher() + `
+  // (in overview mode: a back button to the list of lists instead of the switcher strip)
+  const topPart = shopOverviewEnabled()
+    ? `<button type="button" class="ov-back" id="ovBackBtn">→ כל הרשימות</button><div class="ov-current">${escHtml(getActiveList().name || '')}</div>`
+    : renderListSwitcher();
+  let html = topPart + `
     <div class="shop-toolbar">
       <input type="text" id="shopAddInput" placeholder="הוסיפו פריט לרשימה...">
       <input type="text" id="shopAddQty" placeholder="כמות" class="shop-qty-input">
@@ -3716,6 +3806,7 @@ function applySimpleMode(){   // name kept: called from several places; applies 
   if(gear) gear.classList.toggle('active', activeTab === 'settings');
   // the open tab was just hidden → move to the first visible one
   if(CONTENT_TABS.includes(activeTab) && !tabPrefs[activeTab]) switchTab(visibleContentTabs()[0]);
+  if(document.getElementById('shoppingPanel') && document.body.classList.contains('shop-overview') !== showingShopOverview()) renderShoppingPanel();
 }
 
 function renderAll(){
@@ -3789,7 +3880,10 @@ function renderTabBadges(){
 }
 
 document.querySelectorAll('.tab-btn').forEach(btn=>{
-  btn.addEventListener('click', ()=> switchTab(btn.dataset.tab));
+  btn.addEventListener('click', ()=>{
+    if(btn.dataset.tab === 'shopping' && activeTab === 'shopping' && shopOverviewEnabled() && shopView === 'list'){ backToShopOverview(); return; }
+    switchTab(btn.dataset.tab);
+  });
 });
 switchTab(activeTab);
 window.addEventListener('focus', ()=>{
