@@ -2065,7 +2065,8 @@ function applyTheme(){
   applyColorSchemeHint();
   document.body.classList.toggle('dark', isDark);
   document.getElementById('themeBtn').textContent = isDark ? '☀️' : '🌙';
-  document.querySelector('meta[name="theme-color"]').content = document.body.classList.contains('shop-overview') ? (isDark ? '#161616' : '#F2F2F2') : (isDark ? '#1A1916' : '#F6F3EA');
+  document.querySelector('meta[name="theme-color"]').content = isDark ? '#1A1916' : '#F6F3EA';
+  if(typeof updateShopBodyClasses === 'function' && typeof activeTab !== 'undefined') updateShopBodyClasses();
 }
 
 let fridgeExpanded = false;
@@ -3273,7 +3274,15 @@ function openListShareSheet(rowId, listId){
 
 // ---- Lists overview: when Shopping is the only tab, the app opens on a page of all lists ----
 let shopView = 'overview';        // 'overview' | 'list' — only used while overview mode is on
-function shopOverviewEnabled(){ const v = visibleContentTabs(); return v.length === 1 && v[0] === 'shopping'; }
+function shopOverviewEnabled(){ return true; }   // the shopping tab always opens on the page of all lists
+// page-level colours/layout for the lists page and the list page — only while the shopping tab is on screen
+function updateShopBodyClasses(){
+  const onShop = activeTab === 'shopping';
+  document.body.classList.toggle('shop-overview', onShop && showingShopOverview());
+  document.body.classList.toggle('shop-listview', onShop && !showingShopOverview());
+  const tc = document.querySelector('meta[name="theme-color"]');
+  if(tc) tc.content = onShop ? (isDark ? (showingShopOverview() ? '#161616' : '#1E1E1E') : (showingShopOverview() ? '#F2F2F2' : '#FFFFFF')) : (isDark ? '#1A1916' : '#F6F3EA');
+}
 function showingShopOverview(){ return shopOverviewEnabled() && shopView === 'overview'; }
 function shortName(email){ return String(email || '').split('@')[0]; }
 // "who is this shared with" — all lists live in one synced row, so they share the same people
@@ -3307,6 +3316,7 @@ async function openShoppingListFromOverview(id, rowId){
 }
 function backToShopOverview(){
   shopView = 'overview';
+  closeShopAddBar();
   renderShoppingPanel();
   window.scrollTo(0, 0);
 }
@@ -3366,121 +3376,101 @@ function renderShoppingOverview(el){
 
 function renderShoppingPanel(){
   const el = document.getElementById('shoppingPanel');
-  document.body.classList.toggle('shop-overview', showingShopOverview());
-  const tc = document.querySelector('meta[name="theme-color"]');
-  if(tc) tc.content = showingShopOverview() ? (isDark ? '#161616' : '#F2F2F2') : (isDark ? '#1A1916' : '#5B7553');
+  updateShopBodyClasses();
   const titleEl = document.getElementById('shoppingTitle');
   if(titleEl) titleEl.textContent = showingShopOverview() ? 'הרשימות שלי' : 'רשימת קניות';
   if(showingShopOverview()){ renderShoppingOverview(el); return; }
 
-  // List switcher + toolbar for adding — sync/import/share now live in Settings
-  // (in overview mode: a back button to the list of lists instead of the switcher strip)
-  const topPart = shopOverviewEnabled()
-    ? `<button type="button" class="ov-back" id="ovBackBtn">→ כל הרשימות</button><div class="ov-current">${escHtml(getActiveList().name || '')}</div>`
-    : renderListSwitcher();
-  let html = topPart + `
-    <div class="shop-toolbar">
-      <input type="text" id="shopAddInput" placeholder="הוסיפו פריט לרשימה...">
-      <input type="text" id="shopAddQty" placeholder="כמות" class="shop-qty-input">
-      <button id="shopAddBtn">הוספה</button>
-    </div>
-    <div class="autocomplete-row" id="shopAutocomplete"></div>
-  `;
+  // List page: a top bar (back · name · share · menu), a thin progress line, the items, and an "Add" button
+  const list = getActiveList();
+  const totalN = shoppingList.size;
+  const checkedCount = [...shoppingList].filter(i=>boughtItems.has(i)).length;
+  const pct = totalN ? Math.round(checkedCount/totalN*100) : 0;
+  let html = `
+    <div class="sl-top">
+      <button type="button" class="sl-icon sl-back" id="ovBackBtn" aria-label="חזרה לכל הרשימות"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M20 12H5M11 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <span class="sl-title">${escHtml(list.name || '')}</span>
+      <button type="button" class="sl-icon" id="slShareBtn" aria-label="עם מי הרשימה משותפת"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><circle cx="9" cy="8" r="4" fill="currentColor"/><path d="M1.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5z" fill="currentColor"/><path d="M19.5 8v6M16.5 11h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <button type="button" class="sl-icon sl-dots" id="slMenuBtn" aria-label="אפשרויות הרשימה">⋮</button>
+      <div class="sl-prog" aria-label="${checkedCount} מתוך ${totalN} נקנו"><i style="width:${pct}%"></i></div>
+    </div>`;
 
-  if(shoppingList.size===0){
-    html += '<p class="shopping-empty">הרשימה ריקה — הוסיפו מצרכים חסרים ממתכון או הקלידו למעלה</p>';
-    const freqEmpty = getAllKnownItems()
-      .filter(it => it.freq > 0)
-      .sort((a,b)=> b.freq - a.freq || a.name.localeCompare(b.name,'he'))
-      .slice(0, 12);
-    if(freqEmpty.length){
-      html += `<div class="shop-freq-section">
+  const freqHtml = (items)=> items.length ? `<div class="shop-freq-section">
         <div class="shop-freq-title">בשימוש תדיר — לחצו להוספה</div>
-        <div class="shop-freq-grid">${freqEmpty.map(it=>
+        <div class="shop-freq-grid">${items.map(it=>
           `<button type="button" class="shop-freq-chip" data-name="${escAttr(it.name)}">${escHtml(it.name)}</button>`
         ).join('')}</div>
-      </div>`;
-    }
+      </div>` : '';
+  const wireFreq = ()=> el.querySelectorAll('.shop-freq-chip').forEach(chip=>{
+    chip.onclick = ()=>{
+      const name = chip.dataset.name;
+      shoppingList.add(name);
+      boughtItems.delete(name);
+      recordUsage(name);
+      saveShoppingList();
+      saveBought();
+      renderShoppingPanel();
+      renderTabBadges();
+    };
+  });
+
+  if(shoppingList.size===0){
+    html += '<p class="shopping-empty">הרשימה ריקה — לחצו על "הוספה" או הוסיפו מצרכים חסרים ממתכון</p>';
+    html += freqHtml(getAllKnownItems()
+      .filter(it => it.freq > 0)
+      .sort((a,b)=> b.freq - a.freq || a.name.localeCompare(b.name,'he'))
+      .slice(0, 12));
+    html += shopAddFabHtml();
     el.innerHTML = html;
-    wireListSwitcher();
-    wireShopToolbar();
+    wireListPageChrome();
     renderShopManageBox();
-    el.querySelectorAll('.shop-freq-chip').forEach(chip=>{
-      chip.onclick = ()=>{
-        const name = chip.dataset.name;
-        shoppingList.add(name);
-        boughtItems.delete(name);
-        recordUsage(name);
-        saveShoppingList();
-        saveBought();
-        renderShoppingPanel();
-        renderTabBadges();
-      };
-    });
+    wireFreq();
     return;
   }
 
-  // Group
-  const groups = {};
-  const checkedCount = [...shoppingList].filter(i=>boughtItems.has(i)).length;
-  [...shoppingList].forEach(item=>{
-    if(!showCheckedShop && boughtItems.has(item)) return;
-    const cat = catOf(item);
-    if(!groups[cat]) groups[cat] = [];
-    groups[cat].push(item);
-  });
+  // Group by category; the unchecked items first, the checked ones folded away below
   const catOrder = [...new Set(allCategoryNames().concat(['אחר']))];
-
-  catOrder.forEach(cat=>{
-    if(!groups[cat] || groups[cat].length===0) return;
-    html += `<div class="shop-group"><div class="shop-group-title">${escHtml(cat)}</div>`;
-    groups[cat].sort((a,b)=>a.localeCompare(b,'he')).forEach(item=>{
-      const bought = boughtItems.has(item);
-      const emoji = iconOf(item);
-      const qty = qtyOfShopItem(item);
-      const note = ((getActiveList().notes)||{})[item] || '';
-      html += `
-        <div class="shop-item ${bought?'bought':''}" data-item="${escAttr(item)}">
-          <button type="button" class="shop-check" aria-label="סימון כנקנה">${bought?'✓':''}</button>
+  const itemRow = (item)=>{
+    const bought = boughtItems.has(item);
+    const emoji = iconOf(item);
+    const qty = qtyOfShopItem(item);
+    const note = ((list.notes)||{})[item] || '';
+    const sub = [qty, note].filter(Boolean).join(' · ');
+    return `
+        <div class="shop-item sl-row ${bought?'bought':''}" data-item="${escAttr(item)}">
+          <button type="button" class="shop-check" aria-label="${bought?'ביטול סימון':'סימון כנקנה'}">${bought?'✓':''}</button>
+          <div class="shop-item-name"><span class="sl-name">${escHtml(item)}</span>${sub?`<div class="shop-item-note">${escHtml(sub)}</div>`:''}</div>
           <button type="button" class="shop-item-icon" aria-label="שינוי קטגוריה">${escHtml(emoji)}</button>
-          <div class="shop-item-name">${escHtml(item)}${qty?` <span class="shop-item-qty">(${escHtml(qty)})</span>`:''}${note?`<div class="shop-item-note">${escHtml(note)}</div>`:''}</div>
-          <span class="shop-item-more" aria-hidden="true">‹</span>
         </div>`;
-    });
-    html += `</div>`;
-  });
+  };
+  const groupsHtml = (items)=>{
+    const groups = {};
+    items.forEach(item=>{ const cat = catOf(item); (groups[cat] = groups[cat] || []).push(item); });
+    const nonEmpty = catOrder.filter(c=>groups[c] && groups[c].length);
+    return nonEmpty.map(cat=>`
+      ${nonEmpty.length > 1 ? `<div class="sl-cat">${escHtml(cat)}</div>` : ''}
+      <div class="sl-block">${groups[cat].sort((a,b)=>a.localeCompare(b,'he')).map(itemRow).join('')}</div>`).join('');
+  };
+  const openItems = [...shoppingList].filter(i=>!boughtItems.has(i));
+  const doneItems = [...shoppingList].filter(i=>boughtItems.has(i));
+  html += openItems.length ? groupsHtml(openItems) : '<p class="shopping-empty">✓ הכול נקנה!</p>';
 
   if(checkedCount > 0){
-    html += `<button class="shop-checked-toggle" id="toggleCheckedBtn">
-      ${showCheckedShop ? 'הסתירו פריטים שסומנו' : `הציגו פריטים שסומנו (${checkedCount})`}
+    html += `<button class="shop-checked-toggle" id="toggleCheckedBtn" aria-expanded="${showCheckedShop?'true':'false'}">
+      <span class="sl-chev${showCheckedShop?' up':''}">⌄</span> ${showCheckedShop ? 'הסתרת פריטים שסומנו' : `הצגת פריטים שסומנו (${checkedCount})`}
     </button>`;
+    if(showCheckedShop) html += `<div class="sl-block sl-done">${doneItems.sort((a,b)=>a.localeCompare(b,'he')).map(itemRow).join('')}</div>`;
   }
-
-  html += `<div class="shop-actions-bar">
-    <button type="button" class="danger" id="shopClearBoughtBtn" ${checkedCount? '':'disabled'}>🧹 נקו מסומנים${checkedCount?` (${checkedCount})`:''}</button>
-    ${activeListId !== 'main' && shoppingList.size
-      ? `<button type="button" class="primary-action" id="shopTransferBtn">➡️ העבירו לרשימה הראשית</button>`
-      : ''}
-    <button type="button" class="primary-action" id="shopSaveListBtn">💾 שמרו רשימה לשימוש בהמשך</button>
-  </div>`;
 
   // Frequent items (history) not already on the list
-  const freq = getAllKnownItems()
+  html += freqHtml(getAllKnownItems()
     .filter(it => it.freq > 0 && !shoppingList.has(it.name))
     .sort((a,b)=> b.freq - a.freq || a.name.localeCompare(b.name,'he'))
-    .slice(0, 12);
-  if(freq.length){
-    html += `<div class="shop-freq-section">
-      <div class="shop-freq-title">בשימוש תדיר — לחצו להוספה</div>
-      <div class="shop-freq-grid">${freq.map(it=>
-        `<button type="button" class="shop-freq-chip" data-name="${escAttr(it.name)}">${escHtml(it.name)}</button>`
-      ).join('')}</div>
-    </div>`;
-  }
+    .slice(0, 12));
 
+  html += shopAddFabHtml();
   el.innerHTML = html;
-  wireListSwitcher();
-  wireShopToolbar();
+  wireListPageChrome();
   renderShopManageBox();
 
   el.querySelectorAll('.shop-item').forEach(row=>{
@@ -3504,25 +3494,6 @@ function renderShoppingPanel(){
       renderShoppingPanel();
     };
   }
-  const clearBoughtBtn = document.getElementById('shopClearBoughtBtn');
-  if(clearBoughtBtn){
-    clearBoughtBtn.onclick = ()=>{
-      if(boughtItems.size === 0) return;
-      showConfirmModal(`להסיר מהרשימה ${boughtItems.size} פריטים שסומנו כנקנו?`, ()=>{
-        clearBoughtInList(activeListId);
-        renderShoppingPanel();
-        renderTabBadges();
-      });
-    };
-  }
-  const saveListBtn = document.getElementById('shopSaveListBtn');
-  if(saveListBtn){
-    saveListBtn.onclick = ()=> saveShoppingListForLater();
-  }
-  const transferBtn = document.getElementById('shopTransferBtn');
-  if(transferBtn){
-    transferBtn.onclick = ()=> openTransferToMainSheet(activeListId);
-  }
   el.querySelectorAll('.shop-freq-chip').forEach(chip=>{
     chip.onclick = ()=>{
       const name = chip.dataset.name;
@@ -3535,6 +3506,79 @@ function renderShoppingPanel(){
       renderTabBadges();
     };
   });
+}
+
+// ---- list page chrome: top bar buttons, the "Add" pill, the bottom add bar, the ⌄ actions menu ----
+function shopAddFabHtml(){
+  return `<div class="sl-fab">
+      <button type="button" class="sl-fab-more" id="slMoreBtn" aria-label="פעולות נוספות"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button type="button" class="sl-fab-add" id="slAddBtn">+ הוספה</button>
+    </div>`;
+}
+function wireListPageChrome(){
+  const back = document.getElementById('ovBackBtn');
+  if(back) back.onclick = ()=>{ if(history.state && history.state.shopList){ history.back(); } else backToShopOverview(); };
+  const share = document.getElementById('slShareBtn');
+  if(share) share.onclick = ()=>{
+    if(!currentUser){ alert('כדי לשתף רשימה צריך להתחבר לחשבון (בהגדרות)'); return; }
+    openListShareSheet(activeShoppingRowId, activeListId);
+  };
+  const menu = document.getElementById('slMenuBtn');
+  if(menu) menu.onclick = ()=> openListMenu(activeListId, activeShoppingRowId);
+  const add = document.getElementById('slAddBtn');
+  if(add) add.onclick = openShopAddBar;
+  const more = document.getElementById('slMoreBtn');
+  if(more) more.onclick = openListActionsSheet;
+}
+function openShopAddBar(){
+  let bar = document.getElementById('slAddBar');
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = 'slAddBar';
+    bar.className = 'sl-addbar';
+    bar.innerHTML = `
+      <div class="autocomplete-row" id="shopAutocomplete"></div>
+      <div class="shop-toolbar">
+        <input type="text" id="shopAddInput" placeholder="מה להוסיף?" autocomplete="off" enterkeyhint="done">
+        <input type="text" id="shopAddQty" placeholder="כמות" class="shop-qty-input" autocomplete="off">
+        <button type="button" id="shopAddBtn">הוספה</button>
+        <button type="button" class="sl-addbar-x" id="slAddClose" aria-label="סגירה">×</button>
+      </div>`;
+    document.body.appendChild(bar);
+    wireShopToolbar();
+    bar.querySelector('#slAddClose').onclick = closeShopAddBar;
+  }
+  document.body.classList.add('sl-adding');
+  const inp = document.getElementById('shopAddInput');
+  if(inp) inp.focus();
+}
+function closeShopAddBar(){
+  const bar = document.getElementById('slAddBar');
+  if(bar) bar.remove();
+  document.body.classList.remove('sl-adding');
+}
+function openListActionsSheet(){
+  const checkedCount = [...shoppingList].filter(i=>boughtItems.has(i)).length;
+  const ov = openSheet('listActionsSheet', `
+    <div class="sheet-head"><h3>${escHtml(getActiveList().name || '')}</h3><button type="button" class="sheet-x" id="laClose" aria-label="סגירה">×</button></div>
+    <button type="button" class="lm-row" id="laShopMode">🔆  מצב קניות (מסך גדול בסופר)</button>
+    <button type="button" class="lm-row" id="laClear" ${checkedCount?'':'disabled'}>🧹  נקו פריטים שסומנו${checkedCount?` (${checkedCount})`:''}</button>
+    ${activeListId !== 'main' && shoppingList.size && shoppingLists.main ? '<button type="button" class="lm-row" id="laTransfer">➡️  העבירו פריטים לרשימה הראשית</button>' : ''}
+    <button type="button" class="lm-row" id="laSave" ${shoppingList.size?'':'disabled'}>💾  שמרו עותק של הרשימה לשימוש בהמשך</button>`, 'top');
+  ov.querySelector('#laClose').onclick = ()=> ov.remove();
+  ov.querySelector('#laShopMode').onclick = ()=>{ ov.remove(); openShoppingMode(); };
+  ov.querySelector('#laClear').onclick = ()=>{
+    ov.remove();
+    if(boughtItems.size === 0) return;
+    showConfirmModal(`להסיר מהרשימה ${boughtItems.size} פריטים שסומנו כנקנו?`, ()=>{
+      clearBoughtInList(activeListId);
+      renderShoppingPanel();
+      renderTabBadges();
+    });
+  };
+  const tr = ov.querySelector('#laTransfer');
+  if(tr) tr.onclick = ()=>{ ov.remove(); openTransferToMainSheet(activeListId); };
+  ov.querySelector('#laSave').onclick = ()=>{ ov.remove(); saveShoppingListForLater(); };
 }
 
 /** Snapshot the current shopping list as a new named list (ready to reuse later). */
@@ -3567,7 +3611,7 @@ function saveShoppingListForLater(){
     scheduleShoppingPush();
     renderShoppingPanel();
     renderTabBadges();
-    alert(`✓ נשמרה הרשימה «${name}»\nאפשר לעבור אליה מהפס העליון של רשימות הקניות.`);
+    alert(`✓ נשמרה הרשימה «${name}»\nהיא מופיעה במסך כל הרשימות.`);
   }, defaultName);
 }
 
@@ -3663,8 +3707,10 @@ function wireShopToolbar(){
     }
   };
   const btn = document.getElementById('shopAddBtn');
-  if(btn) btn.onclick = add;
+  if(btn) btn.onclick = ()=>{ add(); const i = document.getElementById('shopAddInput'); if(i) i.focus(); };
   const input = document.getElementById('shopAddInput');
+  if(input && input.dataset.wired) return;
+  if(input) input.dataset.wired = '1';
   if(input){
     input.addEventListener('keydown', e=>{ if(e.key==='Enter') add(); });
     input.addEventListener('input', e=>{
@@ -4176,6 +4222,8 @@ function switchTab(name){
     btn.classList.toggle('active', btn.dataset.tab === name);
   });
   window.scrollTo(0,0);
+  updateShopBodyClasses();
+  if(name !== 'shopping') closeShopAddBar();
   if(name === 'shopping'){ if(currentUser) refreshShoppingRowFromAccount(); else pullSync(); }
   if(name === 'settings' && !currentUser) pullRecipeSync();
 }
@@ -5351,8 +5399,9 @@ initAccount();
   if(params.get('action') === 'addToShopping'){
     switchTab('shopping');
     setTimeout(()=>{
-      const input = document.getElementById('shopAddInput');
-      if(input) input.focus();
+      shopView = 'list';
+      renderShoppingPanel();
+      openShopAddBar();
     }, 300);
     history.replaceState(null, '', location.pathname);
   }
