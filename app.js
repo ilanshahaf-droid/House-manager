@@ -2065,7 +2065,7 @@ function applyTheme(){
   applyColorSchemeHint();
   document.body.classList.toggle('dark', isDark);
   document.getElementById('themeBtn').textContent = isDark ? '☀️' : '🌙';
-  document.querySelector('meta[name="theme-color"]').content = isDark ? '#1A1916' : '#F6F3EA';
+  document.querySelector('meta[name="theme-color"]').content = document.body.classList.contains('shop-overview') ? (isDark ? '#161616' : '#F2F2F2') : (isDark ? '#1A1916' : '#F6F3EA');
 }
 
 let fridgeExpanded = false;
@@ -3368,7 +3368,7 @@ function renderShoppingPanel(){
   const el = document.getElementById('shoppingPanel');
   document.body.classList.toggle('shop-overview', showingShopOverview());
   const tc = document.querySelector('meta[name="theme-color"]');
-  if(tc) tc.content = showingShopOverview() ? '#161616' : (isDark ? '#1A1916' : '#5B7553');
+  if(tc) tc.content = showingShopOverview() ? (isDark ? '#161616' : '#F2F2F2') : (isDark ? '#1A1916' : '#5B7553');
   const titleEl = document.getElementById('shoppingTitle');
   if(titleEl) titleEl.textContent = showingShopOverview() ? 'הרשימות שלי' : 'רשימת קניות';
   if(showingShopOverview()){ renderShoppingOverview(el); return; }
