@@ -2263,23 +2263,6 @@ body.recipes-all #recipesListSection{ margin-top:8px; }
 #cookOverlay.cook-list-mode .cook-step-text{ font-size:calc(34px * var(--cook-scale, 1)); }
 
 /* —— Shopping: overview of all lists (when Shopping is the only tab) —— */
-body.shop-overview #openShoppingModeBtn{ display:none; }
-body.shop-overview #shoppingPanel{ background:none; border:none; box-shadow:none; overflow:visible; }
-.ov-list{ display:flex; flex-direction:column; gap:12px; }
-.ov-card{ display:flex; align-items:stretch; background:var(--surface); border:1px solid var(--line); border-radius:22px; box-shadow:var(--shadow-soft); overflow:hidden; }
-.ov-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:8px; text-align:right; border:none; background:none; color:var(--ink); padding:18px 18px 16px; cursor:pointer; font-family:'Assistant',sans-serif; }
-.ov-main:active{ background:var(--paper); }
-.ov-top{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
-.ov-name{ font-family:'Frank Ruhl Libre',serif; font-size:22px; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ov-open{ flex-shrink:0; min-width:34px; height:34px; padding:0 8px; border-radius:100px; background:var(--brick); color:#fff; font-weight:800; font-size:16px; display:flex; align-items:center; justify-content:center; }
-.ov-open.zero{ background:var(--herb-soft); color:var(--herb); }
-.ov-count{ font-size:14px; font-weight:600; color:var(--ink-soft); }
-.ov-bar{ display:block; height:8px; border-radius:100px; background:var(--line); overflow:hidden; }
-.ov-bar i{ display:block; height:100%; background:var(--herb); border-radius:100px; }
-.ov-share{ font-size:13px; color:var(--ink-soft); }
-.ov-share.shared{ color:var(--herb); font-weight:700; }
-.ov-menu{ flex-shrink:0; width:50px; border:none; background:none; color:var(--ink-soft); font-size:22px; cursor:pointer; }
-.ov-new{ display:block; width:100%; margin-top:14px; border:1px dashed var(--line); background:none; color:var(--ink-soft); padding:16px; border-radius:22px; font-size:15.5px; font-weight:800; cursor:pointer; font-family:'Assistant',sans-serif; }
 .ov-back{ border:none; background:none; color:var(--herb); font-size:15px; font-weight:800; padding:4px 2px 2px; cursor:pointer; font-family:'Assistant',sans-serif; }
 .ov-current{ font-family:'Frank Ruhl Libre',serif; font-size:20px; font-weight:800; margin:2px 2px 12px; }
 
@@ -2299,3 +2282,38 @@ body.shop-overview #shoppingPanel{ background:none; border:none; box-shadow:none
 .sh-add-chip{ border:1px solid var(--line); background:var(--paper); color:var(--herb); padding:8px 14px; border-radius:100px; font-size:14px; font-weight:700; cursor:pointer; font-family:'Assistant',sans-serif; }
 #listShareSheet button:disabled{ opacity:.5; }
 .lb-main .ov-share{ font-size:12.5px; }
+
+/* —— Lists overview, dark card design —— */
+body.shop-overview{ background:#161616; color:#fff; }
+body.shop-overview header.top{ background:#161616; border-bottom-color:#2A2A2A; }
+body.shop-overview header.top h1{ color:#fff; }
+body.shop-overview #headerSub{ color:#9A9A9A; }
+body.shop-overview .theme-btn{ background:#262626; border-color:#262626; }
+body.shop-overview #openShoppingModeBtn{ display:none; }
+body.shop-overview #tab-shopping .section-head h2{ font-family:'Rubik','Assistant',sans-serif; font-weight:700; font-size:30px; color:#fff; }
+body.shop-overview #shoppingPanel{ background:none; border:none; box-shadow:none; overflow:visible; }
+body.shop-overview footer.hint{ color:#666; }
+body.shop-overview .tab-bar{ background:#1C1C1C; border-top-color:#2A2A2A; }
+body.shop-overview .tab-btn{ color:#9A9A9A; }
+body.shop-overview .tab-btn.active{ color:#86D46B; }
+body.shop-overview .wrap{ padding-bottom:150px; }
+.ov-list{ display:flex; flex-direction:column; gap:18px; }
+.ov-card{ background:#262626; color:#fff; border-radius:22px; padding:20px 22px 22px; cursor:pointer; -webkit-tap-highlight-color:transparent; transition:background .15s; }
+.ov-card:active{ background:#2E2E2E; }
+.ov-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.ov-name{ font-family:'Rubik','Assistant',sans-serif; font-weight:600; font-size:24px; line-height:1.25; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ov-menu{ flex-shrink:0; width:36px; height:40px; margin-inline-end:-10px; border:none; background:none; color:#9A9A9A; font-size:26px; font-weight:700; line-height:1; cursor:pointer; }
+.ov-progress{ display:flex; align-items:center; gap:16px; margin-top:22px; }
+.ov-bar{ flex:1; display:block; height:12px; border-radius:100px; background:#3A3A3A; overflow:hidden; }
+.ov-bar i{ display:block; height:100%; background:#86D46B; border-radius:100px; transition:width .3s; }
+.ov-frac{ flex-shrink:0; font-family:'Rubik','Assistant',sans-serif; font-weight:500; font-size:19px; color:#fff; font-variant-numeric:tabular-nums; }
+.ov-people{ margin-top:20px; display:flex; flex-direction:column; gap:12px; }
+.ov-person{ display:flex; align-items:center; gap:14px; }
+.ov-avatar{ width:46px; height:46px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-family:'Rubik','Assistant',sans-serif; font-weight:600; font-size:20px; }
+.ov-email{ min-width:0; font-family:'Rubik','Assistant',sans-serif; font-size:16px; color:#A8A8A8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ov-more{ font-size:14px; color:#8A8A8A; padding-inline-start:60px; }
+.ov-fab{ position:fixed; left:20px; bottom:calc(86px + env(safe-area-inset-bottom,0px)); z-index:30; width:66px; height:66px; border-radius:50%; border:none; background:#86D46B; color:#141414; font-size:38px; font-weight:400; line-height:1; cursor:pointer; box-shadow:0 10px 24px -8px rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; padding-bottom:4px; }
+.ov-fab:active{ transform:scale(.95); }
+body.no-tab-bar .ov-fab{ bottom:calc(26px + env(safe-area-inset-bottom,0px)); }
+body.shop-overview .ov-back, body.shop-overview .ov-current{ color:#fff; }
+@media (min-width:700px){ .ov-fab{ left:calc(50% - 320px + 4px); } }

@@ -3311,32 +3311,55 @@ function backToShopOverview(){
   window.scrollTo(0, 0);
 }
 window.addEventListener('popstate', ()=>{ if(shopOverviewEnabled() && shopView === 'list') backToShopOverview(); });
+// e-mails of the people a list's row is shared with (not including me) — for the avatars on the cards
+function sharePeopleForRow(row){
+  const kind = rowShareKind(row);
+  if(kind === 'household') return householdMembers.filter(m=>m.user_id !== currentUser.id).map(m=>m.email).filter(Boolean);
+  if(kind === 'foreign') return row.owner_email ? [row.owner_email] : [];
+  if(kind === 'own'){
+    shareInfoForRow(row);                       // loads the e-mails in the background the first time
+    const c = sharedEmailsCache[row.id];
+    return c && !c.error ? c.emails : [];
+  }
+  return [];
+}
+const OV_AVATAR_COLORS = [['#C9C6EC','#3B3870'], ['#BFE3C8','#24533A'], ['#F5D2B8','#6B3A1C'], ['#BFDDF2','#1F4866'], ['#F2C4D3','#6A2440']];
+function ovAvatarColor(email){
+  let h = 0; for(const ch of String(email)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return OV_AVATAR_COLORS[h % OV_AVATAR_COLORS.length];
+}
 function renderShoppingOverview(el){
   syncLiveSetsIntoList();
   refreshShoppingRowsCache();
   const cards = allListRefs().map(ref=>{
     const id = ref.listId, l = ref.list;
-    const share = ref.row ? shareInfoForRow(ref.row) : shoppingShareInfo();
     const { total, done } = refStats(ref);
-    const open = total - done;
     const pct = total ? Math.round(done/total*100) : 0;
-    const countText = total ? `${open} פריטים לקנות${done ? ` · ${done} נקנו` : ''}` : 'רשימה ריקה';
+    const people = ref.row ? sharePeopleForRow(ref.row) : [];
+    const shown = people.slice(0, 2);
+    const peopleHtml = shown.map(e=>{
+      const [bg, fg] = ovAvatarColor(e);
+      return `<div class="ov-person"><span class="ov-avatar" style="background:${bg};color:${fg}">${escHtml(String(e).charAt(0).toUpperCase())}</span><span class="ov-email" dir="ltr">${escHtml(e)}</span></div>`;
+    }).join('') + (people.length > 2 ? `<div class="ov-more">ועוד ${people.length - 2} משתתפים</div>` : '');
     return `
-      <div class="ov-card">
-        <button type="button" class="ov-main" data-id="${escAttr(id)}" data-row="${escAttr(ref.rowId||'')}">
-          <span class="ov-top"><span class="ov-name">${escHtml(l.name)}</span><span class="ov-open${open?'':' zero'}">${open}</span></span>
-          <span class="ov-count">${escHtml(countText)}</span>
-          <span class="ov-bar"><i style="width:${pct}%"></i></span>
-          ${share.text ? `<span class="ov-share${share.shared?' shared':''}">${share.shared?'👥':'🔒'} ${escHtml(share.text)}</span>` : ''}
-        </button>
-        <button type="button" class="ov-menu" data-id="${escAttr(id)}" data-row="${escAttr(ref.rowId||'')}" aria-label="אפשרויות הרשימה">⋮</button>
+      <div class="ov-card" data-id="${escAttr(id)}" data-row="${escAttr(ref.rowId||'')}" role="button" tabindex="0">
+        <div class="ov-head">
+          <span class="ov-name">${escHtml(l.name)}</span>
+          <button type="button" class="ov-menu" data-id="${escAttr(id)}" data-row="${escAttr(ref.rowId||'')}" aria-label="אפשרויות הרשימה">⋮</button>
+        </div>
+        <div class="ov-progress"><span class="ov-bar"><i style="width:${pct}%"></i></span><span class="ov-frac" dir="ltr">${done}/${total}</span></div>
+        ${peopleHtml ? `<div class="ov-people">${peopleHtml}</div>` : ''}
       </div>`;
   }).join('');
   el.innerHTML = `
     <div class="ov-list">${cards}</div>
-    <button type="button" class="ov-new" id="ovNewBtn">＋ רשימה חדשה</button>`;
-  el.querySelectorAll('.ov-main').forEach(b=>{ b.onclick = ()=> openShoppingListFromOverview(b.dataset.id, b.dataset.row || null); });
-  el.querySelectorAll('.ov-menu').forEach(b=>{ b.onclick = ()=> openListMenu(b.dataset.id, b.dataset.row || null); });
+    <button type="button" class="ov-fab" id="ovNewBtn" aria-label="רשימה חדשה">+</button>`;
+  el.querySelectorAll('.ov-card').forEach(c=>{
+    const open = ()=> openShoppingListFromOverview(c.dataset.id, c.dataset.row || null);
+    c.onclick = open;
+    c.onkeydown = (e)=>{ if(e.key === 'Enter') open(); };
+  });
+  el.querySelectorAll('.ov-menu').forEach(b=>{ b.onclick = (e)=>{ e.stopPropagation(); openListMenu(b.dataset.id, b.dataset.row || null); }; });
   el.querySelector('#ovNewBtn').onclick = createShoppingList;
   renderShopManageBox();
 }
@@ -3344,6 +3367,8 @@ function renderShoppingOverview(el){
 function renderShoppingPanel(){
   const el = document.getElementById('shoppingPanel');
   document.body.classList.toggle('shop-overview', showingShopOverview());
+  const tc = document.querySelector('meta[name="theme-color"]');
+  if(tc) tc.content = showingShopOverview() ? '#161616' : (isDark ? '#1A1916' : '#5B7553');
   const titleEl = document.getElementById('shoppingTitle');
   if(titleEl) titleEl.textContent = showingShopOverview() ? 'הרשימות שלי' : 'רשימת קניות';
   if(showingShopOverview()){ renderShoppingOverview(el); return; }
