@@ -619,6 +619,7 @@ async function pushShoppingRow(){
       if(rowId !== activeShoppingRowId) return;
       if(upd && upd.length){
         ok = true;
+        queueAddedPush(rowId, sent, sentBase, serverLists, merged);
         lastShoppingUpdatedAt = upd[0].updated_at || stamp;
         setShoppingBase(merged, rowId);
         syncLiveSetsIntoList();
@@ -1162,6 +1163,7 @@ async function initAccount(){
     applyDisplayPrefsFromUser(currentUser); refreshDisplayPrefs();
     if(restoreListsOverviewCache() && activeTab === 'shopping') renderShoppingPanel();
     await loadAccountData();
+    openListFromUrl();
   }
   renderAccountBox();
   if(cameFromGoogle && (currentUser || pendingOAuthError)){
@@ -5567,6 +5569,75 @@ function wireAddedNoticeSettings(){
 }
 wireAddedNoticeSettings();
 
+
+// ---- Push to the other people on a list when I add items (server: notify-shopping Edge Function) ----
+let addedPushQueue = {};     // "rowId|listId" → Set of items
+let addedPushTimer = null;
+function queueAddedPush(rowId, sent, base, before, merged){
+  if(!currentUser || !sbClient || !rowId) return;
+  const row = rowById(rowId);
+  if(row){                                   // skip lists that nobody else is on
+    const kind = rowShareKind(row);
+    if(kind === 'local') return;
+    if(kind === 'household' && !householdMembers.some(m=>m.user_id !== currentUser.id)) return;
+    if(kind === 'own' && sharedEmailsCache[row.id] && !sharedEmailsCache[row.id].error && !sharedEmailsCache[row.id].emails.length) return;
+  }
+  Object.keys(sent || {}).forEach(listId=>{
+    const now = new Set(((merged || {})[listId] || {}).items || []);
+    const had = new Set([...((((before || {})[listId]) || {}).items || []), ...((((base || {})[listId]) || {}).items || [])]);
+    const added = ((sent[listId] || {}).items || []).filter(i=>!had.has(i) && now.has(i));
+    if(!added.length) return;
+    const key = rowId + '|' + listId;
+    const set = addedPushQueue[key] = addedPushQueue[key] || new Set();
+    added.forEach(i=>set.add(i));
+  });
+  if(Object.keys(addedPushQueue).length){
+    clearTimeout(addedPushTimer);
+    addedPushTimer = setTimeout(flushAddedPush, 4000);    // a few items added in a row → one notification
+  }
+}
+function flushAddedPush(){
+  const q = addedPushQueue; addedPushQueue = {};
+  Object.keys(q).forEach(key=>{
+    const [row_id, list_id] = key.split('|');
+    sbClient.functions.invoke('notify-shopping', { body: { action: 'added', row_id, list_id, items: [...q[key]] } }).catch(()=>{});
+  });
+}
+// messages from the service worker: a push arrived while the app is on screen / a notification was tapped
+async function openListFromNotice(rowId, listId){
+  if(!listId) { switchTab('shopping'); return; }
+  switchTab('shopping');
+  try{ await openShoppingListFromOverview(listId, rowId || null); }catch(e){}
+}
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.addEventListener('message', (e)=>{
+    const m = e.data || {};
+    if(m.type === 'push-added' && m.data){
+      if(m.data.row_id === activeShoppingRowId) return;      // the live sync of the open list already shows it
+      showAddedToast(m.data.title ? `${m.data.title} — ${m.data.body || ''}` : (m.data.body || ''));
+      if(currentUser && m.data.row_id){
+        sbClient.from('user_data').select('*').eq('id', m.data.row_id).maybeSingle().then(({ data })=>{
+          if(!data) return;
+          const i = accountShoppingRows.findIndex(r=>r.id === data.id);
+          if(i > -1) accountShoppingRows[i] = data; else accountShoppingRows.push(data);
+          if(activeTab === 'shopping' && showingShopOverview()) renderShoppingPanel();
+          saveListsOverviewCache();
+        });
+      }
+    } else if(m.type === 'open-list'){
+      openListFromNotice(m.row_id, m.list_id);
+    }
+  });
+}
+// opened from a notification (app was closed): ./?list=…&row=…
+async function openListFromUrl(){
+  let p;
+  try{ p = new URLSearchParams(location.search); }catch(e){ return; }
+  const listId = p.get('list');
+  if(!listId) return;
+  try{ history.replaceState(history.state, '', location.pathname); }catch(e){}
+  await openListFromNotice(p.get('row'), listId);
+}
 
 // ---- Web Push (works with the notify-shopping Edge Function; see push_setup.sql) ----
 function urlB64ToUint8Array(b64){

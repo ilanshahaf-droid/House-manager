@@ -537,6 +537,11 @@ async function renderAddScreen(user, row){
       if(qty) freshLists[freshKey].quantities[val] = qty; else delete freshLists[freshKey].quantities[val];
     }, 'שומרים...');
     if(ok){
+      // tell the other people on this list (push notification) — fire and forget
+      try{
+        const target = pickTargetList(row.payload);
+        sbClient.functions.invoke('notify-shopping', { body: { action: 'added', row_id: row.id, list_id: target.key, items: [val] } }).catch(()=>{});
+      }catch(e){}
       status.textContent = `✓ "${val}" נוסף`;
       input.value = '';
       if(qtyInput) qtyInput.value = '';

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'household-app-v20';
+const CACHE_NAME = 'household-app-v21';
 const APP_SHELL = [
   './',
   './index.html',
@@ -62,4 +62,44 @@ self.addEventListener('fetch', (event) => {
         })
       )
   );
+});
+
+// ---- Push notifications: "someone added items to a shared list" ----
+self.addEventListener('push', (event) => {
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; } catch (e) { d = { body: event.data ? event.data.text() : '' }; }
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const visible = wins.filter((c) => c.visibilityState === 'visible');
+    if (visible.length && d.row_id) {
+      // the app is open on screen — let it show its own small message instead of a system notification
+      visible.forEach((c) => c.postMessage({ type: 'push-added', data: d }));
+      return;
+    }
+    await self.registration.showNotification(d.title || 'ניהול משק בית', {
+      body: d.body || '',
+      icon: 'icon-192.png',
+      badge: 'icon-192.png',
+      dir: 'rtl',
+      lang: 'he',
+      tag: d.tag || undefined,
+      renotify: !!d.tag,
+      data: { url: d.url || './', row_id: d.row_id || null, list_id: d.list_id || null }
+    });
+  })());
+});
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const data = event.notification.data || {};
+  const url = new URL(data.url || './', self.registration.scope).href;
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of wins) {
+      if (c.url.startsWith(self.registration.scope) && 'focus' in c) {
+        c.postMessage({ type: 'open-list', row_id: data.row_id, list_id: data.list_id });
+        return c.focus();
+      }
+    }
+    return self.clients.openWindow(url);
+  })());
 });
