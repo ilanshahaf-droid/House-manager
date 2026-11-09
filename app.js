@@ -1130,6 +1130,11 @@ function applyDisplayPrefs(prefs){
     if(JSON.stringify(next) !== JSON.stringify(tabPrefs)){ tabPrefs = next; saveTabPrefs(); changed = true; }
   }
   if(typeof prefs.dark === 'boolean' && prefs.dark !== isDark){ isDark = prefs.dark; saveTheme(); changed = true; }
+  if(Array.isArray(prefs.listOrder) && JSON.stringify(prefs.listOrder) !== JSON.stringify(listOrder) && !ovDrag){
+    listOrder = prefs.listOrder.map(String);
+    try{ localStorage.setItem('list_order', JSON.stringify(listOrder)); }catch(e){}
+    if(typeof activeTab !== 'undefined' && activeTab === 'shopping' && showingShopOverview()) renderShoppingPanel();
+  }
   if(changed){ applyTheme(); applySimpleMode(); }
 }
 function applyDisplayPrefsFromUser(user){
@@ -1138,7 +1143,7 @@ function applyDisplayPrefsFromUser(user){
 async function saveDisplayPrefs(){
   if(!currentUser || !sbClient) return;
   try{
-    const { data, error } = await sbClient.auth.updateUser({ data: { display_prefs: { tabs: tabPrefs, simple: !tabPrefs.fridge, dark: isDark, cookFont, cookScale } } });
+    const { data, error } = await sbClient.auth.updateUser({ data: { display_prefs: { tabs: tabPrefs, simple: !tabPrefs.fridge, dark: isDark, cookFont, cookScale, listOrder } } });
     if(!error && data && data.user) currentUser = data.user;
   }catch(e){ /* offline — this device keeps its setting; it will be sent next time it changes */ }
 }
@@ -3078,7 +3083,25 @@ function rowListsPayload(row){
   if(!row || row.id === activeShoppingRowId){ syncLiveSetsIntoList(); return shoppingLists; }
   return (row.payload && typeof row.payload === 'object') ? row.payload : {};
 }
+// the order of the lists on the lists page — chosen by long-press dragging; kept per user, synced across devices
+let listOrder = (()=>{ try{ const v = JSON.parse(localStorage.getItem('list_order') || '[]'); return Array.isArray(v) ? v.map(String) : []; }catch(e){ return []; } })();
+const listOrderKey = (ref)=> (ref.row ? ref.rowId : 'local') + '|' + ref.listId;
+function sortByListOrder(refs){
+  if(!listOrder.length) return refs;
+  const pos = new Map(listOrder.map((k,i)=>[k,i]));
+  // lists that were never moved keep their natural place (after the ones that were ordered), new lists go last
+  return refs.map((r,i)=>({ r, i, p: pos.has(listOrderKey(r)) ? pos.get(listOrderKey(r)) : Infinity }))
+    .sort((a,b)=> (a.p - b.p) || (a.i - b.i)).map(x=>x.r);
+}
+function setListOrder(keys){
+  listOrder = keys.slice(0, 200);
+  try{ localStorage.setItem('list_order', JSON.stringify(listOrder)); }catch(e){}
+  clearTimeout(setListOrder._t); setListOrder._t = setTimeout(saveDisplayPrefs, 600);
+}
 function allListRefs(){
+  return sortByListOrder(allListRefsUnordered());
+}
+function allListRefsUnordered(){
   if(!currentUser || !activeShoppingRowId || !accountShoppingRows.length){
     return Object.keys(shoppingLists).map(id=>({ rowId: activeShoppingRowId, listId:id, list: shoppingLists[id], row:null }));
   }
@@ -3415,6 +3438,91 @@ function openListPeopleSheet(listId, rowId){
   const ed = ov.querySelector('#ovpEdit');
   if(ed) ed.onclick = ()=>{ ov.remove(); openListShareSheet(row.id, listId); };
 }
+// ---- long-press a card, then drag it up or down to change the order of the lists ----
+let ovDrag = null, ovDragJustEnded = false;
+const OV_LONG_PRESS_MS = 420;
+function wireOverviewDrag(card, listEl){
+  let timer = null, sx = 0, sy = 0, pid = null;
+  const cancelPress = ()=>{ clearTimeout(timer); timer = null; };
+  card.addEventListener('contextmenu', e=> e.preventDefault());
+  card.addEventListener('pointerdown', (e)=>{
+    if(e.button > 0 || ovDrag) return;
+    if(e.target.closest('.ov-menu, .ov-share')) return;
+    sx = e.clientX; sy = e.clientY; pid = e.pointerId;
+    cancelPress();
+    timer = setTimeout(()=>{ timer = null; startOverviewDrag(card, listEl, pid, sy); }, OV_LONG_PRESS_MS);
+  });
+  card.addEventListener('pointermove', (e)=>{
+    if(timer && (Math.abs(e.clientX - sx) > 8 || Math.abs(e.clientY - sy) > 8)) cancelPress();   // it's a scroll, not a long press
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(t=> card.addEventListener(t, cancelPress));
+}
+function startOverviewDrag(card, listEl, pointerId, clientY){
+  const cards = [...listEl.querySelectorAll('.ov-card')];
+  if(cards.length < 2) return;
+  const from = cards.indexOf(card);
+  const rects = cards.map(c=>{ const r = c.getBoundingClientRect(); return { top: r.top + window.scrollY, h: r.height }; });
+  const gap = cards.length > 1 ? Math.max(0, rects[1].top - (rects[0].top + rects[0].h)) : 0;
+  ovDrag = { card, cards, from, to: from, rects, gap, startY: clientY + window.scrollY, lastClientY: clientY, pointerId, raf: null };
+  try{ card.setPointerCapture(pointerId); }catch(e){}
+  if(navigator.vibrate) try{ navigator.vibrate(25); }catch(e){}
+  document.body.classList.add('ov-dragging');
+  card.classList.add('ov-lifted');
+  cards.forEach(c=>{ if(c !== card) c.classList.add('ov-shifting'); });
+  const onMove = (e)=>{ if(e.pointerId === pointerId){ ovDrag.lastClientY = e.clientY; moveOverviewDrag(); } };
+  const onEnd = (e)=>{ if(e.pointerId !== pointerId) return; cleanup(); endOverviewDrag(); };
+  const blockScroll = (e)=>{ e.preventDefault(); };
+  const cleanup = ()=>{
+    card.removeEventListener('pointermove', onMove);
+    card.removeEventListener('pointerup', onEnd);
+    card.removeEventListener('pointercancel', onEnd);
+    document.removeEventListener('touchmove', blockScroll);
+  };
+  card.addEventListener('pointermove', onMove);
+  card.addEventListener('pointerup', onEnd);
+  card.addEventListener('pointercancel', onEnd);
+  document.addEventListener('touchmove', blockScroll, { passive:false });
+  ovDrag.autoScroll = ()=>{
+    if(!ovDrag) return;
+    const y = ovDrag.lastClientY, edge = 90, bottomEdge = window.innerHeight - 150;
+    const v = y < edge ? -Math.ceil((edge - y) / 6) : (y > bottomEdge ? Math.ceil((y - bottomEdge) / 6) : 0);
+    if(v){ window.scrollBy(0, v); moveOverviewDrag(); }
+    ovDrag.raf = requestAnimationFrame(ovDrag.autoScroll);
+  };
+  ovDrag.raf = requestAnimationFrame(ovDrag.autoScroll);
+}
+function moveOverviewDrag(){
+  const d = ovDrag; if(!d) return;
+  const dy = (d.lastClientY + window.scrollY) - d.startY;
+  d.card.style.transform = `translateY(${dy}px) scale(1.03)`;
+  const center = d.rects[d.from].top + d.rects[d.from].h / 2 + dy;
+  let to = 0;
+  d.rects.forEach((r,i)=>{ if(i !== d.from && center > r.top + r.h / 2) to++; });
+  d.to = to;
+  const shift = d.rects[d.from].h + d.gap;
+  d.cards.forEach((c,i)=>{
+    if(i === d.from) return;
+    let off = 0;
+    if(d.from < to && i > d.from && i <= to) off = -shift;
+    else if(d.from > to && i >= to && i < d.from) off = shift;
+    c.style.transform = off ? `translateY(${off}px)` : '';
+  });
+}
+function endOverviewDrag(){
+  const d = ovDrag; if(!d) return;
+  cancelAnimationFrame(d.raf);
+  ovDrag = null;
+  ovDragJustEnded = true; setTimeout(()=>{ ovDragJustEnded = false; }, 350);   // the finger lifting is not a tap
+  document.body.classList.remove('ov-dragging');
+  const refs = allListRefs();
+  if(d.to !== d.from && refs.length === d.cards.length){
+    const moved = refs.splice(d.from, 1)[0];
+    refs.splice(d.to, 0, moved);
+    setListOrder(refs.map(listOrderKey));
+  }
+  renderShoppingPanel();
+}
+
 function renderShoppingOverview(el){
   syncLiveSetsIntoList();
   refreshShoppingRowsCache();
@@ -3438,9 +3546,10 @@ function renderShoppingOverview(el){
     <div class="ov-list">${cards}</div>
     <button type="button" class="ov-fab" id="ovNewBtn" aria-label="רשימה חדשה">+</button>`;
   el.querySelectorAll('.ov-card').forEach(c=>{
-    const open = ()=> openShoppingListFromOverview(c.dataset.id, c.dataset.row || null);
+    const open = ()=>{ if(ovDragJustEnded) return; openShoppingListFromOverview(c.dataset.id, c.dataset.row || null); };
     c.onclick = open;
     c.onkeydown = (e)=>{ if(e.key === 'Enter') open(); };
+    wireOverviewDrag(c, el.querySelector('.ov-list'));
   });
   el.querySelectorAll('.ov-share').forEach(b=>{ b.onclick = (e)=>{ e.stopPropagation(); openListPeopleSheet(b.dataset.id, b.dataset.row || null); }; });
   el.querySelectorAll('.ov-menu').forEach(b=>{ b.onclick = (e)=>{ e.stopPropagation(); openListMenu(b.dataset.id, b.dataset.row || null); }; });
@@ -5656,12 +5765,17 @@ function pushRegisterArgs(sub){
   const j = sub.toJSON();
   return { p_endpoint: sub.endpoint, p_p256dh: j.keys && j.keys.p256dh, p_auth: j.keys && j.keys.auth, p_user_agent: navigator.userAgent };
 }
-function pushServerErrorText(error){
+async function pushServerErrorText(error){
   const status = error && error.context && error.context.status;
-  if(status === 404) return 'פונקציית השרת עוד לא הוקמה ב-Supabase (ראו הוראות ההקמה).';
-  if(status === 401) return 'צריך להתחבר מחדש לחשבון.';
-  if(status === 500) return 'השרת לא מוכן — ודאו שהרצתם את push_setup.sql.';
-  return 'לא ניתן להגיע לשרת ההתראות כרגע.';
+  let detail = '';
+  try{ const b = await error.context.clone().json(); detail = (b && (b.error || b.message || b.msg)) || ''; }catch(e){
+    try{ detail = (await error.context.clone().text() || '').slice(0, 160); }catch(e2){}
+  }
+  const tail = detail ? ` (פרטים: ${detail})` : (status ? ` (קוד ${status})` : '');
+  if(status === 404) return 'פונקציית השרת notify-shopping עוד לא הוקמה ב-Supabase.' + tail;
+  if(status === 401) return 'צריך להתחבר מחדש לחשבון.' + tail;
+  if(status >= 500) return 'פונקציית השרת notify-shopping נכשלה — כנראה צריך להעלות את הגרסה החדשה שלה.' + tail;
+  return 'לא ניתן להגיע לשרת ההתראות כרגע.' + tail;
 }
 async function enablePush(setStatus){
   if(!pushSupported()){ setStatus('הדפדפן הזה לא תומך בהתראות דחיפה.'); return false; }
@@ -5672,7 +5786,7 @@ async function enablePush(setStatus){
   const reg = await getPushRegistration();
   if(!reg){ setStatus('האפליקציה עוד לא מוכנה להתראות — פתחו אותה דרך הכתובת הרגילה ונסו שוב.'); return false; }
   const { data, error } = await sbClient.functions.invoke('notify-shopping', { body: { action: 'key' } });
-  if(error || !data || !data.publicKey){ setStatus(pushServerErrorText(error)); return false; }
+  if(error || !data || !data.publicKey){ setStatus(await pushServerErrorText(error)); return false; }
   let sub = await reg.pushManager.getSubscription();
   if(sub && sub.options && sub.options.applicationServerKey && uint8ToB64Url(sub.options.applicationServerKey) !== data.publicKey){
     await sub.unsubscribe(); sub = null;     // keys changed on the server — start fresh
@@ -5728,7 +5842,7 @@ function wirePushSettings(){
     if(localStorage.getItem('push_enabled') !== '1'){ setStatus('קודם הפעילו התראות דחיפה.'); return; }
     setStatus('שולחים...');
     const { data, error } = await sbClient.functions.invoke('notify-shopping', { body: { action: 'test' } });
-    if(error){ setStatus(pushServerErrorText(error)); return; }
+    if(error){ setStatus(await pushServerErrorText(error)); return; }
     setStatus(data && data.devices ? `✓ נשלחה התראה ל-${data.sent} מתוך ${data.devices} מכשירים — אמורה להגיע בעוד רגע` : 'אין מכשיר רשום לחשבון הזה — כבו והפעילו מחדש.');
   };
 }
