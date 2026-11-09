@@ -5734,19 +5734,35 @@ if('serviceWorker' in navigator){
         });
       }
     } else if(m.type === 'open-list'){
-      openListFromNotice(m.row_id, m.list_id);
+      if(e.ports && e.ports[0]) try{ e.ports[0].postMessage('ok'); }catch(err){}   // tell the service worker we got it
+      rememberListToOpen(m.row_id, m.list_id);
+      openPendingList();
     }
   });
 }
+// The list a notification asked to open is remembered for a minute, so it still opens if the app
+// reloads on the way (e.g. right after an update) or the account is still loading.
+function rememberListToOpen(rowId, listId){
+  try{ sessionStorage.setItem('pending_open_list', JSON.stringify({ row: rowId || null, list: listId, t: Date.now() })); }catch(e){}
+}
+async function openPendingList(){
+  let p = null;
+  try{ p = JSON.parse(sessionStorage.getItem('pending_open_list') || 'null'); }catch(e){}
+  if(!p || !p.list || Date.now() - (p.t || 0) > 60000){ try{ sessionStorage.removeItem('pending_open_list'); }catch(e){} return; }
+  if(!currentUser || !accountShoppingRows.length) return;          // not ready yet — called again once the account has loaded
+  try{ sessionStorage.removeItem('pending_open_list'); }catch(e){}
+  await openListFromNotice(p.row, p.list);
+}
 // opened from a notification (app was closed): ./?list=…&row=…
-async function openListFromUrl(){
+(function takeListFromUrl(){
   let p;
   try{ p = new URLSearchParams(location.search); }catch(e){ return; }
   const listId = p.get('list');
   if(!listId) return;
+  rememberListToOpen(p.get('row'), listId);
   try{ history.replaceState(history.state, '', location.pathname); }catch(e){}
-  await openListFromNotice(p.get('row'), listId);
-}
+})();
+function openListFromUrl(){ return openPendingList(); }
 
 // ---- Web Push (works with the notify-shopping Edge Function; see push_setup.sql) ----
 function urlB64ToUint8Array(b64){

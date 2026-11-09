@@ -1,4 +1,4 @@
-const CACHE_NAME = 'household-app-v23';
+const CACHE_NAME = 'household-app-v24';
 const APP_SHELL = [
   './',
   './index.html',
@@ -94,12 +94,17 @@ self.addEventListener('notificationclick', (event) => {
   const url = new URL(data.url || './', self.registration.scope).href;
   event.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    for (const c of wins) {
-      if (c.url.startsWith(self.registration.scope) && 'focus' in c) {
-        c.postMessage({ type: 'open-list', row_id: data.row_id, list_id: data.list_id });
-        return c.focus();
-      }
-    }
-    return self.clients.openWindow(url);
+    const c = wins.find((w) => w.url.startsWith(self.registration.scope));
+    if (!c) return self.clients.openWindow(url);
+    try { await c.focus(); } catch (e) {}
+    if (!data.list_id) return;
+    // ask the open app to show the list; if it doesn't answer (frozen in the background), load the list's address
+    const answered = await new Promise((resolve) => {
+      const ch = new MessageChannel();
+      const t = setTimeout(() => resolve(false), 1500);
+      ch.port1.onmessage = () => { clearTimeout(t); resolve(true); };
+      try { c.postMessage({ type: 'open-list', row_id: data.row_id, list_id: data.list_id }, [ch.port2]); } catch (e) { clearTimeout(t); resolve(false); }
+    });
+    if (!answered && 'navigate' in c) { try { await c.navigate(url); } catch (e) { return self.clients.openWindow(url); } }
   })());
 });
