@@ -474,21 +474,24 @@ function rowLabel(r){
   return r.owner_id === currentUser.id ? 'שלי' : r.owner_email;
 }
 async function loadHousehold(){
-  myHousehold = null; householdMembers = [];
-  if(!sbClient || !currentUser){ return; }
+  if(!sbClient || !currentUser){ myHousehold = null; householdMembers = []; return; }
   try{
     const { data: mem, error } = await sbClient.from('household_members').select('household_id, role').eq('user_id', currentUser.id).maybeSingle();
     if(error){
-      if(/relation|does not exist|schema cache|PGRST205|42P01/i.test((error.message||'') + (error.code||''))) householdSupported = false;
+      if(/relation|does not exist|schema cache|PGRST205|42P01/i.test((error.message||'') + (error.code||''))){ householdSupported = false; myHousehold = null; householdMembers = []; }
       return;
     }
     householdSupported = true;
-    if(!mem) return;
-    const { data: h } = await sbClient.from('households').select('id, name').eq('id', mem.household_id).maybeSingle();
+    if(!mem){ myHousehold = null; householdMembers = []; return; }
+    // the household's name and its members are fetched together (one wait instead of two)
+    const [hRes, mRes] = await Promise.all([
+      sbClient.from('households').select('id, name').eq('id', mem.household_id).maybeSingle(),
+      sbClient.rpc('get_household_members', { hid: mem.household_id })
+    ]);
+    const h = hRes && hRes.data;
     myHousehold = { id: mem.household_id, role: mem.role, name: (h && h.name) || 'משק הבית' };
-    const { data: members } = await sbClient.rpc('get_household_members', { hid: myHousehold.id });
-    householdMembers = members || [];
-  }catch(e){ /* offline or not available — keep personal mode */ }
+    householdMembers = (mRes && mRes.data) || [];
+  }catch(e){ /* offline or not available — keep what we had */ }
 }
 function householdMissingKinds(){
   if(!myHousehold) return [];
@@ -497,7 +500,10 @@ function householdMissingKinds(){
 }
 
 async function loadAccountData(){
-  await loadHousehold();
+  // everything is requested at once — one round-trip of waiting instead of six in a row
+  const [, ...prefetched] = await Promise.all([loadHousehold(), ...HOUSEHOLD_KINDS.map(k=>fetchUserDataRows(k))]);
+  const prefetchedByKind = {};
+  HOUSEHOLD_KINDS.forEach((k,i)=>{ prefetchedByKind[k] = prefetched[i]; });
   const hid = myHousehold ? myHousehold.id : null;
   const appliedKey = hid ? 'household_applied_' + hid : null;
   let foundHouseholdRow = false;
@@ -509,7 +515,7 @@ async function loadAccountData(){
     { kind:'category_settings', set:(r)=>{ accountCategorySettingsRows = r; },  rows:()=>accountCategorySettingsRows,  active:()=>activeCategorySettingsRowId, payload:()=>collectCategorySettings(), apply:applyCategorySettingsRow }
   ];
   for(const cfg of cfgs){
-    cfg.set(await fetchUserDataRows(cfg.kind));
+    cfg.set(prefetchedByKind[cfg.kind] || await fetchUserDataRows(cfg.kind));
     const rows = cfg.rows();
     const own = rows.filter(r=>r.owner_id === currentUser.id);
     let mine = own.find(r=>!r.household_id && (cfg.kind !== 'shopping_lists' || (r.payload && r.payload.main))) || own.find(r=>!r.household_id) || own[0];
@@ -530,7 +536,46 @@ async function loadAccountData(){
   }
   if(appliedKey && foundHouseholdRow) localStorage.setItem(appliedKey, '1');
   renderAll();
+  saveListsOverviewCache();
+  prefetchShareEmails();
   refreshPushRegistration();
+}
+// ---- quick start: the lists page is shown from the last known copy while the fresh data loads ----
+function listsOverviewCacheKey(){ return currentUser ? 'lists_overview_cache_' + currentUser.id : null; }
+function saveListsOverviewCache(){
+  const key = listsOverviewCacheKey();
+  if(!key) return;
+  try{
+    const emails = {};
+    Object.keys(sharedEmailsCache).forEach(id=>{ const c = sharedEmailsCache[id]; if(c && !c.error) emails[id] = c.emails; });
+    localStorage.setItem(key, JSON.stringify({
+      rows: accountShoppingRows.map(r=>({ id:r.id, owner_id:r.owner_id, owner_email:r.owner_email, household_id:r.household_id||null, kind:r.kind, payload:r.payload, updated_at:r.updated_at })),
+      household: myHousehold, members: householdMembers, emails
+    }));
+  }catch(e){}
+}
+function restoreListsOverviewCache(){
+  const key = listsOverviewCacheKey();
+  if(!key || accountShoppingRows.length) return false;
+  try{
+    const c = JSON.parse(localStorage.getItem(key) || 'null');
+    if(!c || !Array.isArray(c.rows) || !c.rows.length) return false;
+    if(activeShoppingRowId && !c.rows.some(r=>r.id === activeShoppingRowId)) return false;
+    accountShoppingRows = c.rows;
+    if(!myHousehold && c.household){ myHousehold = c.household; householdMembers = c.members || []; }
+    Object.keys(c.emails || {}).forEach(id=>{ if(!sharedEmailsCache[id]) sharedEmailsCache[id] = { error:false, emails:c.emails[id] }; });
+    return true;
+  }catch(e){ return false; }
+}
+// who each own list is shared with — asked for all lists at once, in the background
+function prefetchShareEmails(){
+  if(!sbClient || !currentUser) return;
+  const own = accountShoppingRows.filter(r=>rowShareKind(r) === 'own');
+  if(!own.length) return;
+  Promise.all(own.map(r=>fetchSharedEmails(r.id, true).catch(()=>{}))).then(()=>{
+    saveListsOverviewCache();
+    if(activeTab === 'shopping' && showingShopOverview()) renderShoppingPanel();
+  });
 }
 let shoppingPushTimer = null;
 let shoppingPushPending = false;    // local edits not yet sent — a refresh must not overwrite them
@@ -827,6 +872,8 @@ async function doLogout(){
   activeCategorySettingsRowId = null;
   Object.keys(sharedEmailsCache).forEach(k=>delete sharedEmailsCache[k]);
   myHousehold = null; householdMembers = [];
+  accountShoppingRows = [];
+  try{ Object.keys(localStorage).filter(k=>k.startsWith('lists_overview_cache_')).forEach(k=>localStorage.removeItem(k)); }catch(e){}
   localStorage.removeItem('active_shopping_row');
   localStorage.removeItem('active_recipes_row');
   localStorage.removeItem('active_state_row');
@@ -1111,7 +1158,11 @@ async function initAccount(){
   currentUser = session ? session.user : null;
   let cameFromGoogle = false;
   try{ cameFromGoogle = sessionStorage.getItem('oauth_pending') === '1'; sessionStorage.removeItem('oauth_pending'); }catch(e){}
-  if(currentUser){ applyDisplayPrefsFromUser(currentUser); refreshDisplayPrefs(); await loadAccountData(); }
+  if(currentUser){
+    applyDisplayPrefsFromUser(currentUser); refreshDisplayPrefs();
+    if(restoreListsOverviewCache() && activeTab === 'shopping') renderShoppingPanel();
+    await loadAccountData();
+  }
   renderAccountBox();
   if(cameFromGoogle && (currentUser || pendingOAuthError)){
     if(currentUser) showAddedToast(`✓ מחוברים כ-${currentUser.email}`);
@@ -3087,6 +3138,7 @@ function shareInfoForRow(row){
 }
 shareInfoForRow._loading = {};
 function refreshListPickers(){
+  clearTimeout(refreshListPickers._t); refreshListPickers._t = setTimeout(saveListsOverviewCache, 1500);
   if(document.getElementById('shoppingPanel') && activeTab === 'shopping') renderShoppingPanel();
   if(document.getElementById('listsSheet')) openListsSheet();
 }
