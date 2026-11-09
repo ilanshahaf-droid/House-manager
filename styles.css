@@ -2385,3 +2385,17 @@ body.dark .sl-addbar{ background:#1E1E1E; border-top-color:#2E2E2E; }
 .sl-addbar-x{ width:40px; height:40px; border:none !important; background:none !important; box-shadow:none !important; font-size:26px; color:var(--sl-muted, #777) !important; cursor:pointer; flex-shrink:0; }
 .sl-addbar .autocomplete-row{ max-width:560px; margin:0 auto 8px; }
 .sl-addbar .autocomplete-row:empty{ display:none; }
+
+/* sharers: an icon with a count on the card; tap → sheet with the names */
+.ov-head .ov-name{ flex:1; }
+.ov-share{ flex-shrink:0; display:inline-flex; align-items:center; gap:4px; height:30px; padding:0 9px; border:none; border-radius:100px; background:rgba(127,127,127,.12); color:var(--ov-muted, #7A7A7A); font-family:'Rubik','Assistant',sans-serif; font-size:13px; font-weight:500; cursor:pointer; }
+.ov-share:active{ background:rgba(127,127,127,.25); }
+.ov-share svg{ width:18px; height:18px; }
+.ovp-list-name{ font-size:14px; color:var(--muted, #777); margin:-4px 0 10px; }
+.ovp-list{ display:flex; flex-direction:column; gap:10px; margin-bottom:12px; }
+.ovp-row{ display:flex; align-items:center; gap:12px; }
+.ovp-row .ov-avatar{ width:38px; height:38px; font-size:16px; }
+.ovp-text{ display:flex; flex-direction:column; min-width:0; }
+.ovp-name{ font-weight:600; font-size:16px; }
+.ovp-email{ font-size:12.5px; color:var(--muted, #888); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; }
+.ovp-tag{ font-weight:400; font-size:11.5px; color:var(--muted, #888); margin-inline-start:6px; }

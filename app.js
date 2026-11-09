@@ -3390,6 +3390,29 @@ function ovAvatarColor(email){
   let h = 0; for(const ch of String(email)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return OV_AVATAR_COLORS[h % OV_AVATAR_COLORS.length];
 }
+const OV_PEOPLE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="9" cy="8" r="3.6" fill="currentColor"/><path d="M2 19.5c0-3.6 3.1-5.8 7-5.8s7 2.2 7 5.8z" fill="currentColor"/><circle cx="17" cy="9" r="2.8" fill="currentColor" opacity=".55"/><path d="M15.6 13.9c3.6.1 6.4 2.1 6.4 5.6h-4.4c0-2.2-.8-4-2-5.6z" fill="currentColor" opacity=".55"/></svg>';
+// tap the people icon on a card → who the list is shared with
+function openListPeopleSheet(listId, rowId){
+  const ref = allListRefs().find(r=>r.listId === listId && (r.rowId||'') === (rowId||'')) || null;
+  const row = ref && ref.row;
+  if(!row) return;
+  const kind = rowShareKind(row);
+  const people = sharePeopleForRow(row);
+  const rows = people.map(e=>{
+    const [bg, fg] = ovAvatarColor(e);
+    const owner = kind === 'foreign' && e === row.owner_email;
+    return `<div class="ovp-row"><span class="ov-avatar" style="background:${bg};color:${fg}">${escHtml(String(e).charAt(0).toUpperCase())}</span>
+      <span class="ovp-text"><span class="ovp-name" dir="auto">${escHtml(shortName(e))}${owner ? ' <span class="ovp-tag">יצר/ה את הרשימה</span>' : ''}</span><span class="ovp-email" dir="ltr">${escHtml(e)}</span></span></div>`;
+  }).join('');
+  const ov = openSheet('listPeopleSheet', `
+    <div class="sheet-head"><h3>משותפת עם</h3><button type="button" class="sheet-x" id="ovpClose" aria-label="סגירה">×</button></div>
+    <div class="ovp-list-name">${escHtml((ref.list && ref.list.name) || '')}${kind === 'household' ? ' · כל משק הבית' : ''}</div>
+    <div class="ovp-list">${rows}</div>
+    ${kind !== 'foreign' ? '<button type="button" class="lm-row" id="ovpEdit">👥  שינוי השותפים</button>' : ''}`, 'top');
+  ov.querySelector('#ovpClose').onclick = ()=> ov.remove();
+  const ed = ov.querySelector('#ovpEdit');
+  if(ed) ed.onclick = ()=>{ ov.remove(); openListShareSheet(row.id, listId); };
+}
 function renderShoppingOverview(el){
   syncLiveSetsIntoList();
   refreshShoppingRowsCache();
@@ -3398,19 +3421,15 @@ function renderShoppingOverview(el){
     const { total, done } = refStats(ref);
     const pct = total ? Math.round(done/total*100) : 0;
     const people = ref.row ? sharePeopleForRow(ref.row) : [];
-    const shown = people.slice(0, 2);
-    const peopleHtml = shown.map(e=>{
-      const [bg, fg] = ovAvatarColor(e);
-      return `<div class="ov-person"><span class="ov-avatar" style="background:${bg};color:${fg}">${escHtml(String(e).charAt(0).toUpperCase())}</span><span class="ov-email" dir="ltr">${escHtml(e)}</span></div>`;
-    }).join('') + (people.length > 2 ? `<div class="ov-more">ועוד ${people.length - 2} משתתפים</div>` : '');
+    const shareBtn = people.length ? `<button type="button" class="ov-share" data-id="${escAttr(id)}" data-row="${escAttr(ref.rowId||'')}" aria-label="משותפת עם ${people.length} אנשים">${OV_PEOPLE_ICON}<span class="ov-share-n">${people.length}</span></button>` : '';
     return `
       <div class="ov-card" data-id="${escAttr(id)}" data-row="${escAttr(ref.rowId||'')}" role="button" tabindex="0">
         <div class="ov-head">
           <span class="ov-name">${escHtml(l.name)}</span>
+          ${shareBtn}
           <button type="button" class="ov-menu" data-id="${escAttr(id)}" data-row="${escAttr(ref.rowId||'')}" aria-label="אפשרויות הרשימה">⋮</button>
         </div>
         <div class="ov-progress"><span class="ov-bar"><i style="width:${pct}%"></i></span><span class="ov-frac" dir="ltr">${done}/${total}</span></div>
-        ${peopleHtml ? `<div class="ov-people">${peopleHtml}</div>` : ''}
       </div>`;
   }).join('');
   el.innerHTML = `
@@ -3421,6 +3440,7 @@ function renderShoppingOverview(el){
     c.onclick = open;
     c.onkeydown = (e)=>{ if(e.key === 'Enter') open(); };
   });
+  el.querySelectorAll('.ov-share').forEach(b=>{ b.onclick = (e)=>{ e.stopPropagation(); openListPeopleSheet(b.dataset.id, b.dataset.row || null); }; });
   el.querySelectorAll('.ov-menu').forEach(b=>{ b.onclick = (e)=>{ e.stopPropagation(); openListMenu(b.dataset.id, b.dataset.row || null); }; });
   el.querySelector('#ovNewBtn').onclick = createShoppingList;
   renderShopManageBox();
