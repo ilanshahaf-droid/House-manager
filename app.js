@@ -547,7 +547,8 @@ function saveListsOverviewCache(){
   if(!key) return;
   try{
     const emails = {};
-    Object.keys(sharedEmailsCache).forEach(id=>{ const c = sharedEmailsCache[id]; if(c && !c.error) emails[id] = c.emails; });
+    const shopIds = new Set(accountShoppingRows.map(r=>r.id));            // only the shopping lists' people, for the lists page
+    Object.keys(sharedEmailsCache).forEach(id=>{ const c = sharedEmailsCache[id]; if(c && !c.error && shopIds.has(id)) emails[id] = c.emails; });
     localStorage.setItem(key, JSON.stringify({
       rows: accountShoppingRows.map(r=>({ id:r.id, owner_id:r.owner_id, owner_email:r.owner_email, household_id:r.household_id||null, kind:r.kind, payload:r.payload, updated_at:r.updated_at })),
       household: myHousehold, members: householdMembers, emails
@@ -563,7 +564,9 @@ function restoreListsOverviewCache(){
     if(activeShoppingRowId && !c.rows.some(r=>r.id === activeShoppingRowId)) return false;
     accountShoppingRows = c.rows;
     if(!myHousehold && c.household){ myHousehold = c.household; householdMembers = c.members || []; }
-    Object.keys(c.emails || {}).forEach(id=>{ if(!sharedEmailsCache[id]) sharedEmailsCache[id] = { error:false, emails:c.emails[id] }; });
+    const shopIds = new Set(c.rows.map(r=>r.id));
+    // shown right away, but marked "stale": anywhere that edits sharing asks the server again first
+    Object.keys(c.emails || {}).forEach(id=>{ if(!sharedEmailsCache[id] && shopIds.has(id)) sharedEmailsCache[id] = { error:false, emails:c.emails[id], stale:true }; });
     return true;
   }catch(e){ return false; }
 }
@@ -849,7 +852,7 @@ async function renderSharedList(containerId, rowId, force){
   paintSharedList(containerId, rowId);
   const row = ownerOfRow(rowId);
   if(row && row.owner_id !== currentUser.id) return;
-  if(sharedEmailsCache[rowId] && !force) return;
+  if(sharedEmailsCache[rowId] && !sharedEmailsCache[rowId].stale && !force) return;
   if(sharedEmailsPending[rowId]) return;
   sharedEmailsPending[rowId] = true;
   try{
@@ -3127,7 +3130,7 @@ function rowShareKind(row){
   return 'own';
 }
 async function fetchSharedEmails(rowId, force){
-  if(!force && sharedEmailsCache[rowId] && !sharedEmailsCache[rowId].error) return sharedEmailsCache[rowId].emails;
+  if(!force && sharedEmailsCache[rowId] && !sharedEmailsCache[rowId].error && !sharedEmailsCache[rowId].stale) return sharedEmailsCache[rowId].emails;
   const { data, error } = await sbClient.rpc('get_shared_emails', { row_id: rowId });
   sharedEmailsCache[rowId] = error ? { error:true, emails:[] } : { error:false, emails:(Array.isArray(data) ? data : []) };
   if(error) throw error;
