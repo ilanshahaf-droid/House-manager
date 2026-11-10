@@ -166,7 +166,7 @@ function applyAppStateRow(row){
   learnedLabels = p.learnedLabels || {};
   learnedBarcodes = p.learnedBarcodes || {};
   autoResetEnabled = !!p.autoResetEnabled;
-  protectedCategories = p.protectedCategories || ["מזווה","תיבול ואפייה"];
+  protectedCategories = migrateCategoryList(p.protectedCategories || ["מזווה ויבש"]);
   recipeOverrides = p.recipeOverrides || {};
   Object.keys(weeklyPlan).forEach(day=>{ if(typeof weeklyPlan[day] === 'string') weeklyPlan[day] = weeklyPlan[day] ? [weeklyPlan[day]] : []; });
   localStorage.setItem('fridge_items', JSON.stringify([...fridge]));
@@ -201,11 +201,11 @@ function applyCategorySettingsRow(row){
   activeCategorySettingsRowId = row.id;
   localStorage.setItem('active_category_settings_row', row.id);
   const p = row.payload || {};
-  categoryOverrides = p.categoryOverrides || {};
+  categoryOverrides = migrateCategoryOverrides(p.categoryOverrides || {});
   iconOverrides = p.iconOverrides || {};
   customCategories = p.customCategories || [];
   removedCatalogItems = p.removedCatalogItems || [];
-  categoryIcons = p.categoryIcons || {};
+  categoryIcons = migrateCategoryKeyed(p.categoryIcons || {});
   localStorage.setItem('category_icons', JSON.stringify(categoryIcons));
   const wasPruned = pruneCustomCategoriesAgainstCatalog();
   localStorage.setItem('category_overrides', JSON.stringify(categoryOverrides));
