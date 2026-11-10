@@ -99,6 +99,15 @@ function migrateCategoryKeyed(map){
   Object.keys(map || {}).forEach(c=>{ if(migrateCategoryName(c) === c) out[c] = map[c]; });   // icons of the old built-in categories give way to the new departments' icons
   return out;
 }
+// One-time clean-up when moving to departments: a saved choice that merely repeats where an item used to sit
+// by default (e.g. "פתי בר" → pantry) or its old default icon would hide the new department / icon — drop it.
+const CATEGORY_SETTINGS_VERSION = 2;
+const LEGACY_DEFAULT_PLACE = {"אפונה קפואה": "ירקות ופירות", "ביצים": "בשר, עוף ודגים", "טונה": "בשר, עוף ודגים", "טופו": "בשר, עוף ודגים", "מוצרלה": "בשר, עוף ודגים", "שעועית לבנה": "בשר, עוף ודגים", "חומוס": "בשר, עוף ודגים", "עדשים": "בשר, עוף ודגים", "שעועית אדומה": "בשר, עוף ודגים", "לחם": "מזווה ויבש", "פיתות": "מזווה ויבש", "לחמניות": "מזווה ויבש", "לחמניות צמה": "מזווה ויבש", "חלה": "מזווה ויבש", "טורטיה": "מזווה ויבש", "שום קפוא": "מזווה ויבש", "ויטמינצ'יק": "מזווה ויבש", "קפה ג'ייקובס": "מזווה ויבש", "בקבוקי מים קטנים": "מזווה ויבש", "פתי בר": "מזווה ויבש", "שוקולד מריר": "מזווה ויבש", "גרעיני פופקורן": "מזווה ויבש", "פירורי לחם": "מזווה ויבש", "יין": "מזווה ויבש"};
+const LEGACY_DEFAULT_ICON = {"בטטה": "🍠", "רוטב סויה": "🍶", "טחינה": "🥜", "אבקת אפייה": "✨", "חרדל": "🟡", "מיונז": "🥪", "שמרים יבשים": "🫙", "קטשופ": "🥫", "פטרוזיליה": "🥬", "מברשת שיניים": "🧴", "חומץ בלסמי": "🍾"};
+function dropLegacyDefaults(overrides, icons){
+  Object.keys(overrides || {}).forEach(i=>{ if(LEGACY_DEFAULT_PLACE[i] && overrides[i] === LEGACY_DEFAULT_PLACE[i]) delete overrides[i]; });
+  Object.keys(icons || {}).forEach(i=>{ if(LEGACY_DEFAULT_ICON[i] && icons[i] === LEGACY_DEFAULT_ICON[i]) delete icons[i]; });
+}
 function migrateCategoryList(list){ return [...new Set((list || []).map(c=>migrateCategoryName(c)))]; }
 let categoryOverrides = migrateCategoryOverrides(JSON.parse(localStorage.getItem('category_overrides')||'{}'));
 // Items typed in a slightly different form still find their department and icon:
@@ -175,6 +184,14 @@ function deleteCustomCategory(name){
   scheduleAppStatePush();
 }
 let iconOverrides = JSON.parse(localStorage.getItem('icon_overrides')||'{}');
+if(+(localStorage.getItem('category_settings_v') || 1) < CATEGORY_SETTINGS_VERSION){
+  dropLegacyDefaults(categoryOverrides, iconOverrides);
+  try{
+    localStorage.setItem('category_overrides', JSON.stringify(categoryOverrides));
+    localStorage.setItem('icon_overrides', JSON.stringify(iconOverrides));
+    localStorage.setItem('category_settings_v', String(CATEGORY_SETTINGS_VERSION));
+  }catch(e){}
+}
 function iconOf(item){ return iconOverrides[item] || ING_EMOJI[item] || ING_EMOJI[knownCatalogName(item, ING_EMOJI)] || '🛒'; }
 function setIconOverride(item, icon){
   if(icon) iconOverrides[item] = icon; else delete iconOverrides[item];

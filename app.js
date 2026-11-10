@@ -195,7 +195,7 @@ async function pushAppState(){
 // its own shareable unit — separate from personal app state (fridge contents, favorites, history)
 // — so two people can share a consistent shopping-list layout without merging their fridges too.
 function collectCategorySettings(){
-  return { categoryOverrides, iconOverrides, customCategories, removedCatalogItems, categoryIcons };
+  return { categoryOverrides, iconOverrides, customCategories, removedCatalogItems, categoryIcons, v: CATEGORY_SETTINGS_VERSION };
 }
 function applyCategorySettingsRow(row){
   activeCategorySettingsRowId = row.id;
@@ -207,7 +207,9 @@ function applyCategorySettingsRow(row){
   removedCatalogItems = p.removedCatalogItems || [];
   categoryIcons = migrateCategoryKeyed(p.categoryIcons || {});
   localStorage.setItem('category_icons', JSON.stringify(categoryIcons));
-  const wasPruned = pruneCustomCategoriesAgainstCatalog();
+  const legacy = (p.v || 1) < CATEGORY_SETTINGS_VERSION;
+  if(legacy) dropLegacyDefaults(categoryOverrides, iconOverrides);       // once; the upgraded settings are saved back below
+  const wasPruned = pruneCustomCategoriesAgainstCatalog() || legacy;
   localStorage.setItem('category_overrides', JSON.stringify(categoryOverrides));
   localStorage.setItem('icon_overrides', JSON.stringify(iconOverrides));
   localStorage.setItem('custom_categories', JSON.stringify(customCategories));
