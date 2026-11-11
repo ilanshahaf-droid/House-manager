@@ -192,7 +192,17 @@ if(+(localStorage.getItem('category_settings_v') || 1) < CATEGORY_SETTINGS_VERSI
     localStorage.setItem('category_settings_v', String(CATEGORY_SETTINGS_VERSION));
   }catch(e){}
 }
-function iconOf(item){ return iconOverrides[item] || ING_EMOJI[item] || ING_EMOJI[knownCatalogName(item, ING_EMOJI)] || '🛒'; }
+// An item's own icon can be an emoji or a small picture (stored as a data: URL).
+function isImageIcon(v){ return typeof v === 'string' && v.startsWith('data:image/'); }
+function builtinIconOf(item){ return ING_EMOJI[item] || ING_EMOJI[knownCatalogName(item, ING_EMOJI)] || '🛒'; }
+// emoji only — for places that show plain text (a picture falls back to the usual emoji there)
+function iconOf(item){ const o = iconOverrides[item]; return (o && !isImageIcon(o)) ? o : builtinIconOf(item); }
+function iconImageOf(item){ const o = iconOverrides[item]; return isImageIcon(o) ? o : null; }
+// for HTML: the picture when there is one, otherwise the emoji
+function iconHtml(item){
+  const img = iconImageOf(item);
+  return img ? `<img class="icon-img" src="${img.replace(/"/g, '')}" alt="">` : String(iconOf(item)).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
 function setIconOverride(item, icon){
   if(icon) iconOverrides[item] = icon; else delete iconOverrides[item];
   localStorage.setItem('icon_overrides', JSON.stringify(iconOverrides));

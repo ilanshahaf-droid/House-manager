@@ -1487,7 +1487,7 @@ function emojiPickerGroups(){
   const names = {};                       // emoji → item names (for search and tooltips)
   const add = (e, name)=>{ if(!e) return; (names[e] = names[e] || []).push(name); };
   Object.keys(ING_EMOJI).forEach(n=> add(ING_EMOJI[n], n));
-  Object.keys(iconOverrides).forEach(n=> add(iconOverrides[n], n));
+  Object.keys(iconOverrides).forEach(n=>{ if(!isImageIcon(iconOverrides[n])) add(iconOverrides[n], n); });
   [...new Set(Object.keys(CATALOG).concat(customCategories))].forEach(cat=>{
     const list = [];
     const push = (e)=>{ if(e && !seen.has(e)){ seen.add(e); list.push(e); } };
@@ -1504,6 +1504,8 @@ function openEmojiPicker(onPick, current){
   const { groups, names } = emojiPickerGroups();
   const ov = openSheet('emojiPickerSheet', `
     <div class="sheet-head"><h3>בחירת אייקון</h3><button type="button" class="sheet-x" id="epClose" aria-label="סגירה">×</button></div>
+    <label class="ep-photo"><input type="file" accept="image/*" id="epFile" hidden>📷  אייקון מתמונה (צילום או מהגלריה)</label>
+    <div class="ep-photo-err" id="epErr"></div>
     <input type="search" id="epSearch" class="ep-search" placeholder="חיפוש לפי מצרך, למשל: גבינה" autocomplete="off">
     <div class="ep-body" id="epBody"></div>
     ${current ? '<button type="button" class="lm-row" id="epClear">✕  בלי אייקון משלי (לחזור לאייקון הרגיל)</button>' : ''}`, 'top');
@@ -1521,9 +1523,38 @@ function openEmojiPicker(onPick, current){
   };
   paint('');
   ov.querySelector('#epSearch').oninput = (e)=> paint(e.target.value);
+  ov.querySelector('#epFile').onchange = async (e)=>{
+    const f = e.target.files && e.target.files[0];
+    if(!f) return;
+    try{ const url = await imageFileToIcon(f); ov.remove(); onPick(url); }
+    catch(err){ ov.querySelector('#epErr').textContent = 'לא הצלחתי לקרוא את התמונה — נסו תמונה אחרת.'; }
+  };
   ov.querySelector('#epClose').onclick = ()=> ov.remove();
   const clr = ov.querySelector('#epClear');
   if(clr) clr.onclick = ()=>{ ov.remove(); onPick(''); };
+}
+// a photo → a small round-ready square icon (96×96, center crop), kept as a data: URL (a few KB)
+function imageFileToIcon(file){
+  return new Promise((resolve, reject)=>{
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      try{
+        const S = 96, side = Math.min(img.naturalWidth, img.naturalHeight);
+        if(!side) throw new Error('empty');
+        const c = document.createElement('canvas'); c.width = S; c.height = S;
+        const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, S, S);
+        g.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, S, S);
+        let out = c.toDataURL('image/webp', 0.8);
+        if(!out.startsWith('data:image/webp')) out = c.toDataURL('image/jpeg', 0.82);
+        URL.revokeObjectURL(url);
+        resolve(out);
+      }catch(e){ URL.revokeObjectURL(url); reject(e); }
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('bad image')); };
+    img.src = url;
+  });
 }
 // puts a "choose" button next to an icon text field (typing an emoji by hand still works)
 function attachEmojiPicker(input){
@@ -1533,9 +1564,17 @@ function attachEmojiPicker(input){
   btn.type = 'button';
   btn.className = 'ep-open';
   btn.setAttribute('aria-label', 'בחירת אייקון מהרשימה');
-  btn.innerHTML = '<span class="ep-open-face">' + escHtml(input.value || '🙂') + '</span><span class="ep-open-arrow">▾</span>';
+  btn.innerHTML = '<span class="ep-open-face"></span><span class="ep-open-arrow">▾</span>';
   const face = btn.querySelector('.ep-open-face');
-  const sync = ()=>{ face.textContent = input.value || '🙂'; };
+  const sync = ()=>{
+    const v = input.value;
+    if(isImageIcon(v)){ face.innerHTML = `<img class="icon-img" src="${v.replace(/"/g, '')}" alt="">`; }
+    else face.textContent = v || '🙂';
+    // a picture is shown on the field itself, not its long text
+    input.classList.toggle('icon-input-pic', isImageIcon(v));
+    input.style.backgroundImage = isImageIcon(v) ? `url("${v}")` : '';
+  };
+  sync();
   input.addEventListener('input', sync);
   btn.onclick = ()=> openEmojiPicker((e)=>{ input.value = e; sync(); input.dispatchEvent(new Event('input', { bubbles:true })); }, input.value);
   input.insertAdjacentElement('afterend', btn);
@@ -1592,7 +1631,7 @@ function openItemSheet(item){
   const ov = openSheet('itemSheet', `
     <div class="sheet-head"><h3>עריכת פריט</h3><button type="button" class="sheet-x" id="isClose" aria-label="סגירה">×</button></div>
     <div class="is-name-row">
-      <button type="button" class="is-icon-btn" id="isIconBtn" aria-label="שינוי קטגוריה">${escHtml(iconOf(item))}</button>
+      <button type="button" class="is-icon-btn" id="isIconBtn" aria-label="שינוי קטגוריה">${iconHtml(item)}</button>
       <input id="isName" type="text" value="${escAttr(item)}" aria-label="שם הפריט">
     </div>
     <div class="is-label">כמות</div>
@@ -1643,7 +1682,7 @@ function openCategoryPicker(item, onPicked){
     </button>`;
   const ov = openSheet('catPickerSheet', `
     <div class="sheet-head"><h3>שינוי קטגוריה</h3><button type="button" class="sheet-x" id="cpClose" aria-label="סגירה">×</button></div>
-    <div class="cp-item">${escHtml(iconOf(item))} ${escHtml(item)}</div>
+    <div class="cp-item">${iconHtml(item)} ${escHtml(item)}</div>
     <div class="cp-scroll">
       <div class="is-label">קטגוריות קבועות</div>
       ${fixed.map(row).join('')}
@@ -2394,6 +2433,8 @@ function renderItemGrid(){
     b.className = 'item-btn' + (fridge.has(item)?' selected':'');
     b.textContent = item;
     b.dataset.icon = iconOf(item);
+    const pic = iconImageOf(item);
+    if(pic){ b.classList.add('has-pic'); b.style.setProperty('--pic', `url("${pic}")`); }
     b.onclick = ()=>{
       if(ranOutMode){
         if(fridge.has(item)) fridge.delete(item);
@@ -2927,7 +2968,7 @@ function openWeekShopPreview(){
         ${groups[c].sort((a,b)=>a.ing.localeCompare(b.ing,'he')).map(e=>`
           <label class="wsp-row${e.inList?' wsp-inlist':''}">
             <input type="checkbox" data-ing="${escAttr(e.ing)}" ${e.inList?'disabled checked':(checked.has(e.ing)?'checked':'')}>
-            <span class="wsp-icon">${escHtml(iconOf(e.ing))}</span>
+            <span class="wsp-icon">${iconHtml(e.ing)}</span>
             <span class="wsp-main">
               <span class="wsp-name">${escHtml(e.ing)}${e.qty?` <span class="wsp-qty">(${escHtml(e.qty)})</span>`:''}${e.inList?' <span class="wsp-note">✓ כבר ברשימה</span>':''}</span>
               <span class="wsp-recipes">${e.recipes.map(escHtml).join(' · ')}</span>
@@ -3692,7 +3733,7 @@ function renderShoppingPanel(){
         <div class="shop-item sl-row ${bought?'bought':''}" data-item="${escAttr(item)}">
           <button type="button" class="shop-check" aria-label="${bought?'ביטול סימון':'סימון כנקנה'}">${bought?'✓':''}</button>
           <div class="shop-item-name"><span class="sl-name">${escHtml(item)}</span>${sub?`<div class="shop-item-note">${escHtml(sub)}</div>`:''}</div>
-          <button type="button" class="shop-item-icon" aria-label="שינוי קטגוריה">${escHtml(emoji)}</button>
+          <button type="button" class="shop-item-icon" aria-label="שינוי קטגוריה">${iconHtml(item)}</button>
         </div>`;
   };
   const groupsHtml = (items)=>{
@@ -4108,7 +4149,7 @@ function renderShoppingModeList(){
       return `
         <div class="sm-row${bought?' bought':''}" data-item="${escAttr(name)}">
           <span class="sm-check">${bought?'✓':''}</span>
-          <span class="sm-icon">${escHtml(iconOf(name))}</span>
+          <span class="sm-icon">${iconHtml(name)}</span>
           <span class="sm-name">${escHtml(name)}${qty?` <span class="shop-item-qty">(${escHtml(qty)})</span>`:''}</span>
         </div>`;
     }).join('');
@@ -4766,7 +4807,7 @@ function renderCatOverridesUI(){
   } else {
     listEl.innerHTML = items.map(item=>`
       <div class="custom-recipe-row">
-        <span>${escHtml(iconOf(item))} ${escHtml(item)} ← ${escHtml(catOf(item))}</span>
+        <span>${iconHtml(item)} ${escHtml(item)} ← ${escHtml(catOf(item))}</span>
         <span class="row-actions">
           <button data-item="${escAttr(item)}" class="edit-cat-btn">ערכו</button>
           <button data-item="${escAttr(item)}" class="del-cat-btn">מחקו</button>
