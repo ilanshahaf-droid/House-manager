@@ -914,6 +914,7 @@ function takeOAuthError(){
 let pendingOAuthError = '';
 
 function renderAccountBox(){
+  if(typeof wireAddedNoticeSettings === 'function') try{ wireAddedNoticeSettings(); }catch(e){}   // the name field depends on who is signed in
   const el = document.getElementById('accountBox');
   if(!el) return;
   if(!sbClient){
@@ -3247,7 +3248,12 @@ async function fetchSharedEmails(rowId, force){
 async function currentShareEmails(row){
   const kind = rowShareKind(row);
   const me = (currentUser.email || '').toLowerCase();
-  if(kind === 'household') return householdMembers.map(m=>(m.email||'').toLowerCase()).filter(e=>e && e !== me);
+  if(kind === 'household'){
+    const members = householdMembers.map(m=>(m.email||'').toLowerCase()).filter(e=>e && e !== me);
+    let extra = [];
+    if(row.owner_id === currentUser.id){ try{ extra = (await fetchSharedEmails(row.id, true)).map(e=>String(e).toLowerCase()); }catch(e){} }
+    return [...new Set(members.concat(extra))].filter(e=>e !== me);
+  }
   if(kind === 'own') return (await fetchSharedEmails(row.id, true)).map(e=>String(e).toLowerCase()).filter(e=>e !== me);
   return [];
 }
@@ -3257,7 +3263,7 @@ function shareInfoForRow(row){
   if(kind === 'local') return { text:'נשמרת רק במכשיר הזה', shared:false };
   if(kind === 'foreign') return { text:'שותפה איתכם על ידי ' + shortName(row.owner_email), shared:true };
   if(kind === 'household'){
-    const others = householdMembers.filter(m=>m.user_id !== currentUser.id).map(m=>shortName(m.email));
+    const others = sharePeopleForRow(row).map(shortName);
     return others.length ? { text:'משותפת עם ' + others.join(', '), shared:true } : { text:'רק אתם', shared:false };
   }
   const c = sharedEmailsCache[row.id];
@@ -3369,6 +3375,18 @@ async function changeListSharing(rowId, listId, addEmail, removeEmail){
   if(addEmail) desired.add(addEmail.toLowerCase());
   if(removeEmail) desired.delete(removeEmail.toLowerCase());
   if(desired.size === current.length && current.every(e=>desired.has(e))) return row;
+  if(kind === 'household' && removeEmail && !addEmail){
+    const rm = removeEmail.toLowerCase();
+    const isMember = householdMembers.some(m=>(m.email||'').toLowerCase() === rm);
+    if(!isMember){
+      const { data, error } = await sbClient.rpc('unshare_data_with_email', { row_id: row.id, target_email: rm });
+      if(error) throw error;
+      if(data !== 'ok') throw new Error(data);
+      delete sharedEmailsCache[row.id];
+      try{ await fetchSharedEmails(row.id, true); }catch(e){}
+      return row;
+    }
+  }
   let cur = new Set(current);
   if(kind === 'household' || Object.keys(rowListsPayload(row)).length > 1){
     row = await detachListToOwnRow(rowId, listId);
@@ -3408,7 +3426,7 @@ function openListShareSheet(rowId, listId){
       const suggestions = householdMembers.map(m=>(m.email||'').toLowerCase()).filter(e=>e && e !== me && !people.includes(e));
       const multi = Object.keys(rowListsPayload(row)).length > 1;
       const note = kind === 'household'
-        ? 'כרגע הרשימה משותפת עם כל משק הבית. שינוי כאן יחול רק על הרשימה הזו — שאר הרשימות יישארו משותפות כרגיל.'
+        ? 'כרגע הרשימה משותפת עם כל משק הבית' + (people.some(e=>!householdMembers.some(m=>(m.email||'').toLowerCase() === e)) ? ' ועם מי שמופיע כאן מחוץ למשק הבית (שיתוף ישן — הוא רואה את כל רשימות משק הבית; הסרה שלו מכאן תסיר אותו מכולן)' : '') + '. הוספת מישהו כאן תחול רק על הרשימה הזו.'
         : (multi ? 'שינוי כאן יחול רק על הרשימה הזו.' : '');
       body = `
         ${note ? `<p class="settings-hint" style="margin:0 0 10px;">${note}</p>` : ''}
@@ -3511,7 +3529,18 @@ window.addEventListener('popstate', ()=>{ if(shopOverviewEnabled() && shopView =
 // e-mails of the people a list's row is shared with (not including me) — for the avatars on the cards
 function sharePeopleForRow(row){
   const kind = rowShareKind(row);
-  if(kind === 'household') return householdMembers.filter(m=>m.user_id !== currentUser.id).map(m=>m.email).filter(Boolean);
+  if(kind === 'household'){
+    const me = (currentUser.email || '').toLowerCase();
+    const members = householdMembers.filter(m=>m.user_id !== currentUser.id).map(m=>(m.email||'').toLowerCase()).filter(Boolean);
+    // people the household row was also shared with directly (older sharing) can see it too — show them
+    let extra = [];
+    if(row.owner_id === currentUser.id){
+      const c = sharedEmailsCache[row.id];
+      if(!c) fetchSharedEmails(row.id).then(()=>{ if(activeTab === 'shopping' && showingShopOverview()) renderShoppingPanel(); }).catch(()=>{});
+      else if(!c.error) extra = c.emails.map(e=>String(e).toLowerCase());
+    }
+    return [...new Set(members.concat(extra))].filter(e=>e && e !== me);
+  }
   if(kind === 'foreign') return row.owner_email ? [row.owner_email] : [];
   if(kind === 'own'){
     shareInfoForRow(row);                       // loads the e-mails in the background the first time
@@ -3913,7 +3942,8 @@ function renderShopManageBox(){
   if(!el) return;
   const catOrder = [...new Set(allCategoryNames().concat(['אחר']))];
   el.innerHTML = `
-    <div class="settings-hint" style="margin-bottom:12px;">הפעולות כאן חלות על הרשימה הפעילה: <b>${escHtml(getActiveList().name)}</b></div>
+    <div class="settings-subtitle" style="margin-top:4px;">כלים לרשימה אחת</div>
+    <div class="settings-hint" style="margin-bottom:12px;">הכלים שלמטה (העתקה, ייבוא, ניקוי וכו׳) חלים על הרשימה הפתוחה כרגע: <b>${escHtml(getActiveList().name)}</b>. שיתוף והתראות נקבעים לכל רשימה לפי השותפים שלה.</div>
     ${renderSyncBoxHTML()}
     <div class="shop-footer">
       <button class="primary" id="copyShoppingBtn">📋 העתקה</button>
@@ -5763,7 +5793,7 @@ function wireAddedNoticeSettings(){
   const status = document.getElementById('addedNotifyStatus');
   if(!nameInput) return;
   if(currentUser) nameInput.value = (currentUser.user_metadata && currentUser.user_metadata.display_name) || '';
-  nameInput.placeholder = currentUser ? (currentUser.email||'').split('@')[0] : 'התחברו כדי להגדיר שם';
+  nameInput.placeholder = currentUser ? ('השם שיוצג (עכשיו: ' + (currentUser.email||'').split('@')[0] + ')') : 'התחברו כדי להגדיר שם';
   saveBtn.onclick = async ()=>{
     if(!currentUser || !sbClient){ status.textContent = 'התחברו קודם לחשבון.'; return; }
     const name = norm(nameInput.value);
