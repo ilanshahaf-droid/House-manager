@@ -3598,7 +3598,7 @@ function wireOverviewDrag(card, listEl){
     if(e.target.closest('.ov-menu, .ov-share')) return;
     sx = e.clientX; sy = e.clientY; pid = e.pointerId;
     cancelPress();
-    timer = setTimeout(()=>{ timer = null; startOverviewDrag(card, listEl, pid, sy); }, OV_LONG_PRESS_MS);
+    timer = setTimeout(()=>{ timer = null; if(card.isConnected && listEl.isConnected) startOverviewDrag(card, listEl, pid, sy); }, OV_LONG_PRESS_MS);
   });
   card.addEventListener('pointermove', (e)=>{
     if(timer && (Math.abs(e.clientX - sx) > 8 || Math.abs(e.clientY - sy) > 8)) cancelPress();   // it's a scroll, not a long press
@@ -3618,17 +3618,23 @@ function startOverviewDrag(card, listEl, pointerId, clientY){
   card.classList.add('ov-lifted');
   cards.forEach(c=>{ if(c !== card) c.classList.add('ov-shifting'); });
   const onMove = (e)=>{ if(e.pointerId === pointerId){ ovDrag.lastClientY = e.clientY; moveOverviewDrag(); } };
-  const onEnd = (e)=>{ if(e.pointerId !== pointerId) return; cleanup(); endOverviewDrag(); };
-  const blockScroll = (e)=>{ e.preventDefault(); };
+  const onEnd = (e)=>{ if(e.pointerId !== pointerId) return; endOverviewDrag(); };
+  // scrolling is held only while this drag is really on — never left blocked
+  const blockScroll = (e)=>{ if(ovDrag && ovDrag.card === card) e.preventDefault(); else cleanup(); };
   const cleanup = ()=>{
     card.removeEventListener('pointermove', onMove);
     card.removeEventListener('pointerup', onEnd);
     card.removeEventListener('pointercancel', onEnd);
+    window.removeEventListener('pointerup', onEnd, true);
+    window.removeEventListener('pointercancel', onEnd, true);
     document.removeEventListener('touchmove', blockScroll);
   };
+  ovDrag.cleanup = cleanup;
   card.addEventListener('pointermove', onMove);
   card.addEventListener('pointerup', onEnd);
   card.addEventListener('pointercancel', onEnd);
+  window.addEventListener('pointerup', onEnd, true);          // the finger lifting anywhere ends the drag
+  window.addEventListener('pointercancel', onEnd, true);
   document.addEventListener('touchmove', blockScroll, { passive:false });
   ovDrag.autoScroll = ()=>{
     if(!ovDrag) return;
@@ -3656,14 +3662,15 @@ function moveOverviewDrag(){
     c.style.transform = off ? `translateY(${off}px)` : '';
   });
 }
-function endOverviewDrag(){
+function endOverviewDrag(cancel){
   const d = ovDrag; if(!d) return;
   cancelAnimationFrame(d.raf);
+  if(d.cleanup) d.cleanup();
   ovDrag = null;
   ovDragJustEnded = true; setTimeout(()=>{ ovDragJustEnded = false; }, 350);   // the finger lifting is not a tap
   document.body.classList.remove('ov-dragging');
   const refs = allListRefs();
-  if(d.to !== d.from && refs.length === d.cards.length){
+  if(!cancel && d.card.isConnected && d.to !== d.from && refs.length === d.cards.length){
     const moved = refs.splice(d.from, 1)[0];
     refs.splice(d.to, 0, moved);
     setListOrder(refs.map(listOrderKey));
@@ -3672,6 +3679,7 @@ function endOverviewDrag(){
 }
 
 function renderShoppingOverview(el){
+  if(ovDrag){ const d = ovDrag; ovDrag = null; cancelAnimationFrame(d.raf); if(d.cleanup) d.cleanup(); document.body.classList.remove('ov-dragging'); }   // the cards are being redrawn — drop a drag in progress
   syncLiveSetsIntoList();
   refreshShoppingRowsCache();
   const cards = allListRefs().map(ref=>{
