@@ -3881,6 +3881,7 @@ function openListActionsSheet(){
   const checkedCount = [...shoppingList].filter(i=>boughtItems.has(i)).length;
   const ov = openSheet('listActionsSheet', `
     <div class="sheet-head"><h3>${escHtml(getActiveList().name || '')}</h3><button type="button" class="sheet-x" id="laClose" aria-label="סגירה">×</button></div>
+    <button type="button" class="lm-row" id="laCatalog">🗂  בחירה מהקטלוג (כמה פריטים בבת אחת)</button>
     <button type="button" class="lm-row" id="laShopMode">🔆  מצב קניות (מסך גדול בסופר)</button>
     <button type="button" class="lm-row" id="laClear" ${checkedCount?'':'disabled'}>🧹  נקו פריטים שסומנו${checkedCount?` (${checkedCount})`:''}</button>
     ${activeListId !== 'main' && shoppingList.size && shoppingLists.main ? '<button type="button" class="lm-row" id="laTransfer">➡️  העבירו פריטים לרשימה הראשית</button>' : ''}
@@ -3890,6 +3891,7 @@ function openListActionsSheet(){
     <button type="button" class="lm-row lm-danger" id="laClearAll" ${shoppingList.size?'':'disabled'}>🗑  רוקנו את הרשימה</button>`, 'top');
   ov.querySelector('#laClose').onclick = ()=> ov.remove();
   ov.querySelector('#laShopMode').onclick = ()=>{ ov.remove(); openShoppingMode(); };
+  ov.querySelector('#laCatalog').onclick = ()=>{ ov.remove(); openCatalogPicker(); };
   ov.querySelector('#laClear').onclick = ()=>{
     ov.remove();
     if(boughtItems.size === 0) return;
@@ -3916,6 +3918,105 @@ function openListActionsSheet(){
       renderTabBadges();
     });
   };
+}
+
+// ---- choose from the catalog: departments → products grid, tap to mark several, "done" adds them all ----
+function catalogItemsByCategory(){
+  const removed = new Set(typeof removedCatalogItems !== 'undefined' ? removedCatalogItems : []);
+  const names = new Set();
+  getAllKnownItems().forEach(it=> names.add(it.name));
+  Object.keys(categoryOverrides).forEach(n=> names.add(n));
+  const byCat = {};
+  names.forEach(n=>{
+    if(removed.has(n)) return;
+    const c = catOf(n);
+    (byCat[c] = byCat[c] || []).push(n);
+  });
+  const freq = (n)=> itemUsage[n] || 0;
+  Object.keys(byCat).forEach(c=> byCat[c].sort((a,b)=> freq(b) - freq(a) || a.localeCompare(b,'he')));
+  return byCat;
+}
+function openCatalogPicker(){
+  const byCat = catalogItemsByCategory();
+  const cats = [...new Set(allCategoryNames().concat(['אחר']))].filter(c=> byCat[c] && byCat[c].length);
+  const picked = new Set();
+  let view = { cat: null, q: '' };
+  const ov = document.createElement('div');
+  ov.className = 'cat-picker';
+  ov.id = 'catalogPicker';
+  ov.innerHTML = `
+    <div class="ctp-top">
+      <button type="button" class="ctp-back" id="ctpBack" aria-label="חזרה"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M20 12H5M11 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <input type="search" id="ctpSearch" class="ctp-search" placeholder="חיפוש מוצר..." autocomplete="off">
+    </div>
+    <div class="ctp-title" id="ctpTitle"></div>
+    <div class="ctp-body" id="ctpBody"></div>
+    <button type="button" class="ctp-done" id="ctpDone">סיום ✓</button>`;
+  document.body.appendChild(ov);
+  document.body.classList.add('ctp-open');
+  const body = ov.querySelector('#ctpBody');
+  const title = ov.querySelector('#ctpTitle');
+  const doneBtn = ov.querySelector('#ctpDone');
+  const paintDone = ()=>{ doneBtn.textContent = picked.size ? `הוספה לרשימה (${picked.size}) ✓` : 'סיום ✓'; };
+  const tile = (n)=>{
+    const inList = shoppingList.has(n) && !boughtItems.has(n);
+    const on = picked.has(n);
+    return `<button type="button" class="ctp-item${on?' on':''}${inList?' in-list':''}" data-n="${escAttr(n)}">
+      <span class="ctp-pic">${iconHtml(n)}<span class="ctp-mark">${on || inList ? '✓' : '+'}</span></span>
+      <span class="ctp-name">${escHtml(n)}</span>${inList ? '<span class="ctp-note">ברשימה</span>' : ''}</button>`;
+  };
+  const wireTiles = ()=>{
+    body.querySelectorAll('.ctp-item').forEach(b=> b.onclick = ()=>{
+      const n = b.dataset.n;
+      if(b.classList.contains('in-list')) return;
+      if(picked.has(n)) picked.delete(n); else picked.add(n);
+      b.classList.toggle('on', picked.has(n));
+      b.querySelector('.ctp-mark').textContent = picked.has(n) ? '✓' : '+';
+      paintDone();
+    });
+    body.querySelectorAll('.ctp-cat').forEach(b=> b.onclick = ()=>{ view.cat = b.dataset.c; paint(); body.scrollTop = 0; });
+    const addNew = body.querySelector('#ctpAddNew');
+    if(addNew) addNew.onclick = ()=>{ picked.add(addNew.dataset.n); paintDone(); paint(); };
+  };
+  const paint = ()=>{
+    const q = norm(view.q);
+    if(q){
+      const all = [];
+      cats.forEach(c=> byCat[c].forEach(n=>{ if(n.includes(q)) all.push(n); }));
+      all.sort((a,b)=> (b.startsWith(q) - a.startsWith(q)) || ((itemUsage[b]||0) - (itemUsage[a]||0)) || a.localeCompare(b,'he'));
+      title.innerHTML = `תוצאות עבור "${escHtml(q)}"`;
+      const exact = all.includes(q) || picked.has(q);
+      body.innerHTML = (exact ? '' : `<button type="button" class="lm-row" id="ctpAddNew" data-n="${escAttr(q)}">＋  הוסיפו "${escHtml(q)}"</button>`) +
+        `<div class="ctp-grid">${all.slice(0, 120).map(tile).join('')}</div>`;
+    } else if(view.cat){
+      title.innerHTML = `${categoryIconHtml(view.cat)} ${escHtml(view.cat)}`;
+      body.innerHTML = `<div class="ctp-grid">${byCat[view.cat].map(tile).join('')}</div>`;
+    } else {
+      title.textContent = 'בחרו מחלקה';
+      body.innerHTML = `<div class="ctp-cats">${cats.map(c=>`
+        <button type="button" class="ctp-cat" data-c="${escAttr(c)}"><span class="ctp-cat-icon">${categoryIconHtml(c)}</span>
+          <span class="ctp-cat-name">${escHtml(c)}</span><span class="ctp-cat-n">${byCat[c].length}</span></button>`).join('')}</div>`;
+    }
+    wireTiles();
+  };
+  const close = ()=>{ ov.remove(); document.body.classList.remove('ctp-open'); };
+  ov.querySelector('#ctpBack').onclick = ()=>{
+    if(view.q){ view.q = ''; ov.querySelector('#ctpSearch').value = ''; paint(); }
+    else if(view.cat){ view.cat = null; paint(); }
+    else close();
+  };
+  ov.querySelector('#ctpSearch').oninput = (e)=>{ view.q = e.target.value; paint(); };
+  doneBtn.onclick = ()=>{
+    const add = [...picked].filter(n=> !(shoppingList.has(n) && !boughtItems.has(n)));
+    add.forEach(n=>{ shoppingList.add(n); boughtItems.delete(n); recordUsage(n); });
+    close();
+    if(add.length){
+      saveShoppingList(); saveBought();
+      renderShoppingPanel(); renderTabBadges();
+      showAddedToast(add.length === 1 ? `נוסף לרשימה: ${add[0]}` : `נוספו לרשימה ${add.length} פריטים`);
+    }
+  };
+  paint(); paintDone();
 }
 
 /** Snapshot the current shopping list as a new named list (ready to reuse later). */
