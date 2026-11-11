@@ -2432,3 +2432,15 @@ body.ov-dragging .ov-fab{ opacity:.4; }
 .ep-photo-err:empty{ display:none; }
 
 .ep-emoji.ep-pic .icon-img{ width:34px; height:34px; vertical-align:middle; }
+
+/* category editing */
+.cp-line{ display:flex; align-items:center; border-bottom:1px solid var(--line); }
+.cp-line .cp-row{ border-bottom:none; flex:1; }
+.cp-edit{ flex:none; width:40px; height:40px; border:none; background:none; color:var(--ink-soft); font-size:18px; cursor:pointer; border-radius:50%; }
+.cp-edit:active{ background:rgba(127,127,127,.15); }
+.cp-icon .icon-img{ width:28px; height:28px; vertical-align:middle; }
+.ce-name{ width:100%; box-sizing:border-box; border:1px solid var(--line); border-radius:12px; padding:10px 12px; font-size:16px; background:var(--paper); color:var(--ink); }
+.ce-fixed{ font-size:16px; font-weight:700; }
+.ce-note{ font-weight:400; font-size:13px; color:var(--ink-soft); }
+#ceIcon{ width:90px; flex:none; text-align:center; border:1px solid var(--line); border-radius:12px; padding:10px; font-size:18px; background:var(--paper); }
+#isCatLabel .icon-img{ width:22px; height:22px; vertical-align:middle; }

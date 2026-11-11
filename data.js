@@ -141,7 +141,13 @@ function setCategoryOverride(item, cat){
 
 const CATEGORY_ICONS = {"ירקות ופירות": "🥦", "מוצרי חלב וביצים": "🧀", "בשר, עוף ודגים": "🥩", "מאפייה ולחם": "🥖", "מזווה ויבש": "🥫", "משקאות": "☕", "חטיפים ומתוקים": "🍫", "קפואים": "❄️", "חומרי ניקוי ופארם": "🧼", "אחר": "🛒"};
 let categoryIcons = migrateCategoryKeyed(JSON.parse(localStorage.getItem('category_icons')||'{}'));
-function categoryIconOf(c){ return categoryIcons[c] || CATEGORY_ICONS[c] || '🏷️'; }
+// a category's icon can also be a picture (data: URL); categoryIconOf stays text-only for plain-text places
+function categoryIconOf(c){ const v = categoryIcons[c]; return (v && !isImageIcon(v)) ? v : (CATEGORY_ICONS[c] || '🏷️'); }
+function categoryIconHtml(c){
+  const v = categoryIcons[c];
+  if(isImageIcon(v)) return `<img class="icon-img" src="${v.replace(/"/g, '')}" alt="">`;
+  return String(categoryIconOf(c)).replace(/[&<>"]/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+}
 function setCategoryIcon(c, icon){
   if(icon) categoryIcons[c] = icon; else delete categoryIcons[c];
   localStorage.setItem('category_icons', JSON.stringify(categoryIcons));
@@ -166,6 +172,21 @@ function addCustomCategory(name){
   if(!name || allCategoryNames().includes(name) || name === 'אחר') return false;
   customCategories.push(name);
   localStorage.setItem('custom_categories', JSON.stringify(customCategories));
+  scheduleCategorySettingsPush();
+  return true;
+}
+// rename one of my categories everywhere it is used (items placed in it, its icon, auto-reset choice)
+function renameCustomCategory(oldName, newName){
+  newName = norm(newName);
+  if(!newName || newName === oldName) return true;
+  if(!customCategories.includes(oldName)) return false;
+  if(allCategoryNames().includes(newName) || newName === 'אחר') return false;
+  customCategories = customCategories.map(c=> c === oldName ? newName : c);
+  localStorage.setItem('custom_categories', JSON.stringify(customCategories));
+  Object.keys(categoryOverrides).forEach(i=>{ if(categoryOverrides[i] === oldName) categoryOverrides[i] = newName; });
+  localStorage.setItem('category_overrides', JSON.stringify(categoryOverrides));
+  if(oldName in categoryIcons){ categoryIcons[newName] = categoryIcons[oldName]; delete categoryIcons[oldName]; localStorage.setItem('category_icons', JSON.stringify(categoryIcons)); }
+  if(protectedCategories.includes(oldName)){ protectedCategories = protectedCategories.map(c=> c === oldName ? newName : c); localStorage.setItem('protected_categories', JSON.stringify(protectedCategories)); }
   scheduleCategorySettingsPush();
   return true;
 }

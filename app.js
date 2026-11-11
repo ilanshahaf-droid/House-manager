@@ -1579,7 +1579,7 @@ function attachEmojiPicker(input){
   const sync = ()=>{
     const v = input.value;
     if(isImageIcon(v)){ face.innerHTML = `<img class="icon-img" src="${v.replace(/"/g, '')}" alt="">`; }
-    else face.textContent = v || '🙂';
+    else face.textContent = v || ((input.placeholder || '').length <= 4 && input.placeholder ? input.placeholder : '🙂');   // empty → show the icon in use now
     // a picture is shown on the field itself, not its long text
     input.classList.toggle('icon-input-pic', isImageIcon(v));
     input.style.backgroundImage = isImageIcon(v) ? `url("${v}")` : '';
@@ -1662,7 +1662,7 @@ function openItemSheet(item){
       <button type="button" class="is-del" id="isDel" aria-label="מחיקת הפריט">🗑</button>
     </div>`);
   const $ = (id)=> ov.querySelector('#' + id);
-  const paintCat = ()=>{ const c = catOf(item); $('isCatLabel').textContent = `${categoryIconOf(c)}  ${c}`; };
+  const paintCat = ()=>{ const c = catOf(item); $('isCatLabel').innerHTML = `${categoryIconHtml(c)}  ${escHtml(c)}`; };
   paintCat();
   $('isClose').onclick = ()=> ov.remove();
   attachEmojiPicker($('isIconInput'));
@@ -1687,9 +1687,9 @@ function openCategoryPicker(item, onPicked){
   const current = catOf(item);
   const fixed = [...new Set(Object.keys(CATALOG).concat(['אחר']))];
   const row = (c)=>`
-    <button type="button" class="cp-row${c===current?' current':''}" data-cat="${escAttr(c)}">
-      <span class="cp-icon">${escHtml(categoryIconOf(c))}</span><span class="cp-name">${escHtml(c)}</span>${c===current?'<span class="cp-check">✓</span>':''}
-    </button>`;
+    <div class="cp-line"><button type="button" class="cp-row${c===current?' current':''}" data-cat="${escAttr(c)}">
+      <span class="cp-icon">${categoryIconHtml(c)}</span><span class="cp-name">${escHtml(c)}</span>${c===current?'<span class="cp-check">✓</span>':''}
+    </button><button type="button" class="cp-edit" data-cat="${escAttr(c)}" aria-label="עריכת הקטגוריה ${escAttr(c)}">✎</button></div>`;
   const ov = openSheet('catPickerSheet', `
     <div class="sheet-head"><h3>שינוי קטגוריה</h3><button type="button" class="sheet-x" id="cpClose" aria-label="סגירה">×</button></div>
     <div class="cp-item">${iconHtml(item)} ${escHtml(item)}</div>
@@ -1719,6 +1719,8 @@ function openCategoryPicker(item, onPicked){
   };
   ov.querySelector('#cpClose').onclick = ()=> ov.remove();
   ov.querySelectorAll('.cp-row').forEach(b=>{ b.onclick = ()=> pick(b.dataset.cat); });
+  ov.querySelectorAll('.cp-edit').forEach(b=>{ b.onclick = ()=> openCategoryEditor(b.dataset.cat, ()=>{ ov.remove(); openCategoryPicker(item, onPicked); }); });
+  attachEmojiPicker(ov.querySelector('#cpEmoji'));
   ov.querySelector('#cpNew').onclick = ()=>{ ov.querySelector('#cpForm').style.display = 'block'; ov.querySelector('#cpNew').style.display = 'none'; ov.querySelector('#cpName').focus(); };
   ov.querySelector('#cpCreate').onclick = ()=>{
     const name = norm(ov.querySelector('#cpName').value);
@@ -1728,9 +1730,60 @@ function openCategoryPicker(item, onPicked){
     const em = norm(ov.querySelector('#cpEmoji').value);
     if(em) setCategoryIcon(name, em);
     renderCatTabs();
+    renderCatOverridesUI();
     pick(name);
   };
 }
+// ---- edit a category: its icon (emoji or picture) for every category, its name for my own ones ----
+function openCategoryEditor(cat, onDone){
+  const mine = customCategories.includes(cat);
+  const ov = openSheet('catEditSheet', `
+    <div class="sheet-head"><h3>עריכת קטגוריה</h3><button type="button" class="sheet-x" id="ceClose" aria-label="סגירה">×</button></div>
+    <div class="is-label">שם</div>
+    ${mine
+      ? `<input id="ceName" type="text" class="ce-name" value="${escAttr(cat)}" aria-label="שם הקטגוריה">`
+      : `<div class="ce-fixed">${escHtml(cat)} <span class="ce-note">· קטגוריה קבועה — אפשר לשנות לה אייקון</span></div>`}
+    <div class="is-label">אייקון</div>
+    <div class="is-icon-row"><input id="ceIcon" type="text" maxlength="4" value="${escAttr(categoryIcons[cat] || '')}" placeholder="${escAttr(CATEGORY_ICONS[cat] || '🏷️')}" aria-label="אייקון הקטגוריה"></div>
+    ${!mine && categoryIcons[cat] ? '<button type="button" class="lm-row" id="ceReset">↺  החזירו לאייקון הרגיל</button>' : ''}
+    <div class="is-error" id="ceError"></div>
+    <div class="is-actions">
+      <button type="button" class="is-done" id="ceSave">שמרו</button>
+      ${mine ? '<button type="button" class="is-del" id="ceDel" aria-label="מחיקת הקטגוריה">🗑</button>' : ''}
+    </div>`, 'top');
+  const $ = (id)=> ov.querySelector('#' + id);
+  attachEmojiPicker($('ceIcon'));
+  const done = ()=>{
+    ov.remove();
+    renderCatOverridesUI(); renderCatTabs(); renderItemGrid(); refreshShoppingViews();
+    if(typeof renderAutoResetSettings === 'function') renderAutoResetSettings();
+    if(onDone) onDone();
+  };
+  $('ceClose').onclick = ()=> ov.remove();
+  if($('ceReset')) $('ceReset').onclick = ()=>{ setCategoryIcon(cat, null); done(); };
+  $('ceSave').onclick = ()=>{
+    let name = cat;
+    if(mine){
+      name = norm($('ceName').value);
+      if(!name){ $('ceError').textContent = 'כתבו שם לקטגוריה.'; return; }
+      if(name !== cat){
+        if(!renameCustomCategory(cat, name)){ $('ceError').textContent = 'קטגוריה בשם הזה כבר קיימת.'; return; }
+        if(activeCat === cat) activeCat = name;
+      }
+    }
+    const icon = norm($('ceIcon').value);
+    if(icon !== (categoryIcons[name] || '')) setCategoryIcon(name, icon || null);
+    done();
+  };
+  if($('ceDel')) $('ceDel').onclick = ()=>{
+    showConfirmModal(`למחוק את הקטגוריה "${cat}"? מצרכים ששויכו אליה יחזרו לסיווג הרגיל שלהם.`, ()=>{
+      deleteCustomCategory(cat);
+      if(activeCat === cat) activeCat = Object.keys(CATALOG)[0];
+      done();
+    });
+  };
+}
+
 function clearBoughtInList(id){
   const l = shoppingLists[id];
   if(!l) return;
@@ -4903,15 +4956,21 @@ function renderCatOverridesUI(){
 
   const catsListEl = document.getElementById('customCatsList');
   if(catsListEl){
-    if(customCategories.length===0){
-      catsListEl.innerHTML = '<p class="custom-empty">עדיין לא הוספתם קטגוריות משלכם</p>';
-    } else {
-      catsListEl.innerHTML = customCategories.map(c=>`
+    {
+      const rowHtml = (c)=>`
         <div class="custom-recipe-row">
-          <span>${escHtml(c)}</span>
-          <button data-cat="${escAttr(c)}" class="del-newcat-btn">מחקו</button>
-        </div>
-      `).join('');
+          <span>${categoryIconHtml(c)} ${escHtml(c)}</span>
+          <span class="row-actions">
+            <button data-cat="${escAttr(c)}" class="edit-newcat-btn">ערכו</button>
+            ${customCategories.includes(c) ? `<button data-cat="${escAttr(c)}" class="del-newcat-btn">מחקו</button>` : ''}
+          </span>
+        </div>`;
+      catsListEl.innerHTML =
+        `<div class="is-label" style="margin-top:4px;">הקטגוריות שלי</div>` +
+        (customCategories.length ? customCategories.map(rowHtml).join('') : '<p class="custom-empty">עדיין לא הוספתם קטגוריות משלכם</p>') +
+        `<div class="is-label" style="margin-top:14px;">קטגוריות קבועות (אפשר לשנות להן אייקון)</div>` +
+        [...new Set(Object.keys(CATALOG).concat(['אחר']))].map(rowHtml).join('');
+      catsListEl.querySelectorAll('.edit-newcat-btn').forEach(btn=>{ btn.onclick = ()=> openCategoryEditor(btn.dataset.cat); });
       catsListEl.querySelectorAll('.del-newcat-btn').forEach(btn=>{
         btn.onclick = ()=>{
           showConfirmModal(`למחוק את הקטגוריה "${btn.dataset.cat}"? מצרכים ששויכו אליה יחזרו לסיווג הרגיל שלהם.`, ()=>{
