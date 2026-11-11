@@ -1,4 +1,4 @@
-const CACHE_NAME = 'household-app-v38';
+const CACHE_NAME = 'household-app-v39';
 const APP_SHELL = [
   './',
   './index.html',
@@ -13,7 +13,10 @@ const APP_SHELL = [
   './quickadd-manifest.json',
   './quickadd-icon-192.png',
   './quickadd-icon-512.png',
-  './quickadd-icon-512-maskable.png'
+  './quickadd-icon-512-maskable.png',
+  './shortcut-main.png',
+  './shortcut-fav1.png',
+  './shortcut-fav2.png'
 ];
 
 self.addEventListener('install', (event) => {

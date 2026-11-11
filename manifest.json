@@ -11,24 +11,77 @@
   "dir": "rtl",
   "lang": "he",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ],
   "shortcuts": [
     {
-      "name": "הוספה מהירה לרשימת קניות",
-      "short_name": "הוספה מהירה",
-      "description": "הוספת פריט לרשימת הקניות בלי לפתוח את כל האפליקציה",
-      "url": "./quick-add.html",
-      "icons": [{ "src": "quickadd-icon-192.png", "sizes": "192x192" }]
+      "name": "רשימה ראשית",
+      "short_name": "רשימה ראשית",
+      "description": "פתיחה ישר לרשימת הקניות הראשית",
+      "url": "./index.html?open=main",
+      "icons": [
+        {
+          "src": "shortcut-main.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     },
     {
-      "name": "רשימת קניות",
-      "short_name": "קניות",
-      "description": "פתיחה ישר ללשונית הקניות",
-      "url": "./index.html?action=addToShopping",
-      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+      "name": "רשימה מועדפת 1",
+      "short_name": "רשימה 1",
+      "description": "הרשימה שבחרתם בהגדרות",
+      "url": "./index.html?open=fav1",
+      "icons": [
+        {
+          "src": "shortcut-fav1.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "רשימה מועדפת 2",
+      "short_name": "רשימה 2",
+      "description": "הרשימה שבחרתם בהגדרות",
+      "url": "./index.html?open=fav2",
+      "icons": [
+        {
+          "src": "shortcut-fav2.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "הוספה מהירה לרשימת קניות",
+      "short_name": "הוספה מהירה",
+      "description": "הוספת פריט בלי לפתוח את כל האפליקציה",
+      "url": "./quick-add.html",
+      "icons": [
+        {
+          "src": "quickadd-icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }

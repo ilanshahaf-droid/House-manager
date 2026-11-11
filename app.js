@@ -1085,6 +1085,11 @@ function applyDisplayPrefs(prefs){
     try{ localStorage.setItem('list_order', JSON.stringify(listOrder)); }catch(e){}
     if(typeof activeTab !== 'undefined' && activeTab === 'shopping' && showingShopOverview()) renderShoppingPanel();
   }
+  if(prefs.shortcuts && typeof prefs.shortcuts === 'object' && typeof shortcutPrefs !== 'undefined' && JSON.stringify(prefs.shortcuts) !== JSON.stringify(shortcutPrefs)){
+    shortcutPrefs = prefs.shortcuts;
+    try{ localStorage.setItem('shortcut_lists', JSON.stringify(shortcutPrefs)); }catch(e){}
+    if(typeof renderShortcutPrefs === 'function') renderShortcutPrefs();
+  }
   if(changed){ applyTheme(); applySimpleMode(); }
 }
 function applyDisplayPrefsFromUser(user){
@@ -1093,7 +1098,7 @@ function applyDisplayPrefsFromUser(user){
 async function saveDisplayPrefs(){
   if(!currentUser || !sbClient) return;
   try{
-    const { data, error } = await sbClient.auth.updateUser({ data: { display_prefs: { tabs: tabPrefs, simple: !tabPrefs.fridge, dark: isDark, cookFont, cookScale, listOrder } } });
+    const { data, error } = await sbClient.auth.updateUser({ data: { display_prefs: { tabs: tabPrefs, simple: !tabPrefs.fridge, dark: isDark, cookFont, cookScale, listOrder, shortcuts: (typeof shortcutPrefs !== 'undefined' ? shortcutPrefs : undefined) } } });
     if(!error && data && data.user) currentUser = data.user;
   }catch(e){ /* offline — this device keeps its setting; it will be sent next time it changes */ }
 }
@@ -1119,8 +1124,10 @@ async function initAccount(){
     if(restoreListsOverviewCache() && activeTab === 'shopping') renderShoppingPanel();
     await loadAccountData();
     openListFromUrl();
+    openPendingShortcut();
   } else {
     acceptPendingInvite();          // tells the person to sign in first; joins right after the sign-in
+    openPendingShortcut();
   }
   renderAccountBox();
   if(cameFromGoogle && (currentUser || pendingOAuthError)){
@@ -3346,6 +3353,7 @@ function shareInfoForRow(row){
 }
 shareInfoForRow._loading = {};
 function refreshListPickers(){
+  if(typeof renderShortcutPrefs === 'function') try{ renderShortcutPrefs(); }catch(e){}
   clearTimeout(refreshListPickers._t); refreshListPickers._t = setTimeout(saveListsOverviewCache, 1500);
   if(document.getElementById('shoppingPanel') && activeTab === 'shopping') renderShoppingPanel();
   if(document.getElementById('listsSheet')) openListsSheet();
@@ -4813,6 +4821,7 @@ function switchTab(name){
   window.scrollTo(0,0);
   updateShopBodyClasses();
   if(name !== 'shopping') closeShopAddBar();
+  if(name === 'settings' && typeof renderShortcutPrefs === 'function') try{ renderShortcutPrefs(); }catch(e){}
   if(name === 'shopping'){ if(currentUser) refreshShoppingRowFromAccount(); else pullSync(); }
   if(name === 'settings' && !currentUser) pullRecipeSync();
 }
@@ -5991,6 +6000,56 @@ checkDailyFridgeReset();
 renderCatTabs();
 renderAll();
 initAccount();
+
+// ---- home-screen icon shortcuts: "main list", "favorite list 1 / 2" (which list each opens is chosen in settings) ----
+var shortcutPrefs = (()=>{ try{ return JSON.parse(localStorage.getItem('shortcut_lists') || '{}') || {}; }catch(e){ return {}; } })();
+function setShortcutPref(slot, key){
+  if(key) shortcutPrefs[slot] = key; else delete shortcutPrefs[slot];
+  try{ localStorage.setItem('shortcut_lists', JSON.stringify(shortcutPrefs)); }catch(e){}
+  if(typeof saveDisplayPrefs === 'function') saveDisplayPrefs();
+}
+function resolveShortcut(slot){
+  const refs = allListRefs();
+  if(slot === 'main'){
+    const k = shortcutPrefs.main;
+    // not chosen yet → the first "main" list in the order shown on the lists page (drag to change), else the first list
+    return (k && refs.find(r=>listOrderKey(r) === k)) || refs.find(r=>r.listId === 'main') || refs[0] || null;
+  }
+  const k = shortcutPrefs[slot];
+  return k ? (refs.find(r=>listOrderKey(r) === k) || null) : null;
+}
+(function takeShortcutFromUrl(){
+  let p; try{ p = new URLSearchParams(location.search); }catch(e){ return; }
+  const slot = p.get('open');
+  if(!['main','fav1','fav2'].includes(slot)) return;
+  try{ sessionStorage.setItem('pending_shortcut', slot); }catch(e){}
+  try{ history.replaceState(history.state, '', location.pathname); }catch(e){}
+})();
+async function openPendingShortcut(){
+  let slot = null; try{ slot = sessionStorage.getItem('pending_shortcut'); }catch(e){}
+  if(!slot) return;
+  try{ sessionStorage.removeItem('pending_shortcut'); }catch(e){}
+  const ref = resolveShortcut(slot);
+  switchTab('shopping');
+  if(ref){ try{ await openShoppingListFromOverview(ref.listId, ref.row ? ref.rowId : null); }catch(e){} }
+  else showAddedToast('עוד לא נבחרה רשימה לקיצור הזה — בוחרים בהגדרות ← רשימות קניות: התראות וקיצורים');
+}
+function renderShortcutPrefs(){
+  const box = document.getElementById('shortcutPrefsBox');
+  if(!box) return;
+  const refs = allListRefs();
+  const opts = (sel)=> refs.map(r=>`<option value="${escAttr(listOrderKey(r))}" ${listOrderKey(r) === sel ? 'selected' : ''}>${escHtml(r.list.name || '')}</option>`).join('');
+  const mainNow = resolveShortcut('main');
+  box.innerHTML = `
+    <label class="sc-row"><span class="sc-label"><img src="shortcut-main.png" alt=""> רשימה ראשית</span>
+      <select data-slot="main">${opts(shortcutPrefs.main || (mainNow ? listOrderKey(mainNow) : ''))}</select></label>
+    <label class="sc-row"><span class="sc-label"><img src="shortcut-fav1.png" alt=""> רשימה מועדפת 1</span>
+      <select data-slot="fav1"><option value="">— לא נבחרה —</option>${opts(shortcutPrefs.fav1)}</select></label>
+    <label class="sc-row"><span class="sc-label"><img src="shortcut-fav2.png" alt=""> רשימה מועדפת 2</span>
+      <select data-slot="fav2"><option value="">— לא נבחרה —</option>${opts(shortcutPrefs.fav2)}</select></label>
+    <p class="settings-hint" style="margin-top:6px;">אם הקיצורים לא מופיעים בלחיצה ארוכה, הטלפון עוד לא עדכן את האפליקציה המותקנת (זה יכול לקחת עד יום). אפשר לזרז: להסיר את האייקון ולהוסיף שוב למסך הבית.</p>`;
+  box.querySelectorAll('select').forEach(sel=> sel.onchange = ()=> setShortcutPref(sel.dataset.slot, sel.value));
+}
 
 // Handle the "quick add to shopping list" home-screen shortcut
 (function handleShortcutParams(){
