@@ -86,6 +86,24 @@ function setItemQuantity(item, qty){
   scheduleShoppingPush();
 }
 function qtyOfShopItem(item){ return (getActiveList().quantities||{})[item] || ''; }
+// how each list is shown (text / visual, sort order, prices) — a personal choice, kept on this device
+function listPrefKey(){ return 'list_view_' + (activeShoppingRowId || 'local') + '|' + activeListId; }
+function getListPrefs(){
+  let p = {};
+  try{ p = JSON.parse(localStorage.getItem(listPrefKey()) || '{}') || {}; }catch(e){}
+  return { view: p.view === 'visual' ? 'visual' : 'text', sort: ['cat','abc','added'].includes(p.sort) ? p.sort : 'cat', prices: !!p.prices };
+}
+function setListPrefs(patch){
+  const p = Object.assign(getListPrefs(), patch);
+  try{ localStorage.setItem(listPrefKey(), JSON.stringify(p)); }catch(e){}
+}
+function parsePrice(v){
+  const n = parseFloat(String(v == null ? '' : v).replace(/[^\d.,]/g, '').replace(',', '.'));
+  return isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
+}
+function priceOfShopItem(item){ const v = (getActiveList().prices || {})[item]; return v == null ? null : parsePrice(v); }
+function fmtPrice(n){ return '₪' + (Math.round(n * 100) / 100).toLocaleString('he-IL', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }); }
+let listSearchOpen = false, listSearchQ = '';
 let shoppingList = new Set(getActiveList().items||[]);
 let boughtItems = new Set(getActiveList().bought||[]);
 let favorites = new Set(JSON.parse(localStorage.getItem('favorites')||'[]'));
@@ -276,13 +294,13 @@ function mergeMap(b, l, s){
 function mergeOneList(b, l, s){
   const res = cloneJSON(s);
   Object.keys(l).forEach(k=>{
-    if(['items','bought','quantities','notes','addedBy'].includes(k)) return;
+    if(['items','bought','quantities','notes','addedBy','prices'].includes(k)) return;
     if(JSON.stringify(l[k]) !== JSON.stringify(b[k])) res[k] = cloneJSON(l[k]);
   });
   res.items = mergeArr(b.items, l.items, s.items);
   const inList = new Set(res.items);
   res.bought = mergeArr(b.bought, l.bought, s.bought).filter(i=>inList.has(i));
-  ['quantities','notes','addedBy'].forEach(m=>{
+  ['quantities','notes','addedBy','prices'].forEach(m=>{
     if(!l[m] && !s[m] && !b[m]) return;
     const merged = mergeMap(b[m], l[m], s[m]);
     Object.keys(merged).forEach(k=>{ if(!inList.has(k)) delete merged[k]; });
@@ -544,6 +562,7 @@ async function loadAccountData(){
   saveListsOverviewCache();
   prefetchShareEmails();
   refreshPushRegistration();
+  if(!acceptingInvite) acceptPendingInvite();
 }
 // ---- quick start: the lists page is shown from the last known copy while the fresh data loads ----
 function listsOverviewCacheKey(){ return currentUser ? 'lists_overview_cache_' + currentUser.id : null; }
@@ -1100,6 +1119,8 @@ async function initAccount(){
     if(restoreListsOverviewCache() && activeTab === 'shopping') renderShoppingPanel();
     await loadAccountData();
     openListFromUrl();
+  } else {
+    acceptPendingInvite();          // tells the person to sign in first; joins right after the sign-in
   }
   renderAccountBox();
   if(cameFromGoogle && (currentUser || pendingOAuthError)){
@@ -1539,13 +1560,19 @@ function applyItemEdits(item, e){
     const moveKey = (obj)=>{ if(Object.prototype.hasOwnProperty.call(obj, item)){ obj[e.name] = obj[item]; delete obj[item]; } };
     shoppingList.delete(item); shoppingList.add(e.name);
     if(boughtItems.has(item)){ boughtItems.delete(item); boughtItems.add(e.name); }
-    moveKey(list.quantities); moveKey(list.notes);
+    list.prices = list.prices || {};
+    moveKey(list.quantities); moveKey(list.notes); moveKey(list.prices);
     if(categoryOverrides[item] && !categoryOverrides[e.name]) setCategoryOverride(e.name, categoryOverrides[item]);
     if(iconOverrides[item] && !iconOverrides[e.name]) setIconOverride(e.name, iconOverrides[item]);
     name = e.name;
   }
   if(e.qty) list.quantities[name] = e.qty; else delete list.quantities[name];
   if(e.note) list.notes[name] = e.note; else delete list.notes[name];
+  if('price' in e){
+    list.prices = list.prices || {};
+    const p = parsePrice(e.price);
+    if(p != null && String(e.price).trim() !== '') list.prices[name] = p; else delete list.prices[name];
+  }
   if(e.icon) setIconOverride(name, e.icon); else if(iconOverrides[name]) setIconOverride(name, null);
   saveShoppingList();
   saveBought();
@@ -1557,6 +1584,7 @@ function deleteShopItem(item){
   boughtItems.delete(item);
   if(list.quantities) delete list.quantities[item];
   if(list.notes) delete list.notes[item];
+  if(list.prices) delete list.prices[item];
   saveShoppingList();
   saveBought();
 }
@@ -1577,6 +1605,8 @@ function openItemSheet(item){
     </div>
     <div class="is-label">הערה</div>
     <textarea id="isNote" rows="2" placeholder="למשל: בלי סוכר, או מה שבמבצע" aria-label="הערה">${escHtml(note0)}</textarea>
+    <div class="is-label">מחיר (₪, לא חובה)</div>
+    <input id="isPrice" type="text" inputmode="decimal" value="${escAttr(priceOfShopItem(item) != null ? String(priceOfShopItem(item)) : '')}" placeholder="למשל: 12.90" aria-label="מחיר" class="is-price">
     <div class="is-label">קטגוריה</div>
     <button type="button" class="is-cat-btn" id="isCat"><span id="isCatLabel"></span><span class="is-cat-arrow">‹</span></button>
     <div class="is-label">אייקון משלכם (אימוג׳י, לא חובה)</div>
@@ -1601,7 +1631,7 @@ function openItemSheet(item){
   $('isDone').onclick = ()=>{
     const name = norm($('isName').value);
     if(!name){ $('isError').textContent = 'אי אפשר להשאיר שם ריק.'; return; }
-    const res = applyItemEdits(item, { name, qty: norm(qtyInput.value), note: norm($('isNote').value), icon: norm($('isIconInput').value) });
+    const res = applyItemEdits(item, { name, qty: norm(qtyInput.value), note: norm($('isNote').value), icon: norm($('isIconInput').value), price: norm($('isPrice').value) });
     if(!res.ok){ $('isError').textContent = 'פריט בשם הזה כבר קיים ברשימה.'; return; }
     ov.remove();
     refreshShoppingViews();
@@ -1721,7 +1751,7 @@ function clearBoughtInList(id){
     const bought = new Set(l.bought || []);
     l.items = (l.items || []).filter(i=>!bought.has(i));
     l.bought = [];
-    ['quantities','notes','addedBy'].forEach(m=>{ if(l[m]) Object.keys(l[m]).forEach(k=>{ if(!l.items.includes(k)) delete l[m][k]; }); });
+    ['quantities','notes','addedBy','prices'].forEach(m=>{ if(l[m]) Object.keys(l[m]).forEach(k=>{ if(!l.items.includes(k)) delete l[m][k]; }); });
     localStorage.setItem('shopping_lists', JSON.stringify(shoppingLists));
     scheduleShoppingPush();
   }
@@ -1773,6 +1803,53 @@ async function openListMenu(id, rowId){
   };
   const del = ov.querySelector('#lmDelete');
   if(del) del.onclick = ()=>{ ov.remove(); if(ownSingleListRow) deleteListRow(activeShoppingRowId, id); else deleteShoppingList(id); };
+}
+
+// ---- ⋮ on the list page: search, text / visual view, sort, rename, share, prices, check / uncheck all ----
+function openListOptionsSheet(){
+  const p = getListPrefs();
+  const l = getActiveList();
+  const bought = [...shoppingList].filter(i=>boughtItems.has(i)).length;
+  const SORTS = { cat:'קטגוריות', abc:'א-ב', added:'סדר הוספה (חדש למעלה)' };
+  const ov = openSheet('listOptsSheet', `
+    <div class="lo-card"><button type="button" class="lo-row" id="loSearch"><span class="lo-ic">🔍</span>חיפוש ברשימה</button></div>
+    <div class="lo-card">
+      <div class="lo-views">
+        <button type="button" class="lo-view${p.view==='text'?' on':''}" data-v="text"><span class="lo-radio">${p.view==='text'?'✓':''}</span>
+          <svg viewBox="0 0 40 52" width="40" height="52" aria-hidden="true"><rect x="2" y="2" width="36" height="48" rx="6" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M9 12h16M9 19h16M9 26h16M9 33h16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><circle cx="31" cy="12" r="1.6" fill="currentColor"/><circle cx="31" cy="19" r="1.6" fill="currentColor"/><circle cx="31" cy="26" r="1.6" fill="currentColor"/><circle cx="31" cy="33" r="1.6" fill="currentColor"/></svg>
+          <span>רשימת טקסט</span></button>
+        <button type="button" class="lo-view${p.view==='visual'?' on':''}" data-v="visual"><span class="lo-radio">${p.view==='visual'?'✓':''}</span>
+          <svg viewBox="0 0 40 52" width="40" height="52" aria-hidden="true"><rect x="2" y="2" width="36" height="48" rx="6" fill="none" stroke="currentColor" stroke-width="2.5"/><rect x="8" y="9" width="11" height="11" rx="3" fill="currentColor" opacity=".55"/><rect x="21" y="9" width="11" height="11" rx="3" fill="currentColor" opacity=".55"/><rect x="8" y="23" width="11" height="11" rx="3" fill="currentColor" opacity=".55"/><rect x="21" y="23" width="11" height="11" rx="3" fill="currentColor" opacity=".55"/></svg>
+          <span>רשימה ויזואלית</span></button>
+      </div>
+      <button type="button" class="lo-row lo-sep" id="loSort"><span class="lo-ic">↕️</span>מיון לפי: <b class="lo-val">${SORTS[p.sort]}</b><span class="lo-chev">‹</span></button>
+      <div class="lo-sorts" id="loSorts" hidden>${Object.keys(SORTS).map(k=>`<button type="button" class="lo-sort${k===p.sort?' on':''}" data-s="${k}">${SORTS[k]}${k===p.sort?' ✓':''}</button>`).join('')}</div>
+    </div>
+    <div class="lo-card">
+      <button type="button" class="lo-row" id="loRename"><span class="lo-ic">✏️</span>שינוי שם הרשימה</button>
+      <button type="button" class="lo-row lo-sep" id="loShare"><span class="lo-ic">👤</span>שיתוף</button>
+    </div>
+    <div class="lo-card"><label class="lo-row lo-switch"><span class="lo-ic">🏷️</span>הצגת מחירים<input type="checkbox" id="loPrices" ${p.prices?'checked':''}><span class="lo-tog"></span></label></div>
+    <div class="lo-card">
+      <button type="button" class="lo-row" id="loUncheck" ${bought?'':'disabled'}><span class="lo-ic">🔄</span>ביטול הסימון של כל הפריטים</button>
+      <button type="button" class="lo-row lo-sep" id="loCheckAll" ${shoppingList.size && bought < shoppingList.size?'':'disabled'}><span class="lo-ic">✔️</span>סימון כל הפריטים כנקנו</button>
+      <button type="button" class="lo-row lo-sep lo-danger" id="loDelBought" ${bought?'':'disabled'}><span class="lo-ic">🗑</span>מחיקת הפריטים שנקנו${bought?` (${bought})`:''}</button>
+    </div>`, 'top lo-sheet');
+  const $ = (id)=> ov.querySelector('#' + id);
+  const close = ()=> ov.remove();
+  $('loSearch').onclick = ()=>{ close(); listSearchOpen = true; renderShoppingPanel(); const i = document.getElementById('slSearch'); if(i) i.focus(); };
+  ov.querySelectorAll('.lo-view').forEach(b=> b.onclick = ()=>{ setListPrefs({ view: b.dataset.v }); close(); renderShoppingPanel(); });
+  $('loSort').onclick = ()=>{ const d = $('loSorts'); d.hidden = !d.hidden; };
+  ov.querySelectorAll('.lo-sort').forEach(b=> b.onclick = ()=>{ setListPrefs({ sort: b.dataset.s }); close(); renderShoppingPanel(); });
+  $('loRename').onclick = ()=>{ close(); renameShoppingList(activeListId); };
+  $('loShare').onclick = ()=>{ close(); openListShareSheet(activeShoppingRowId, activeListId); };
+  $('loPrices').onchange = (e)=>{ setListPrefs({ prices: e.target.checked }); renderShoppingPanel(); };
+  $('loUncheck').onclick = ()=>{ close(); syncLiveSetsIntoList(); snapshotShopping(shoppingLists, 'לפני ביטול כל הסימונים'); boughtItems.clear(); saveBought(); renderShoppingPanel(); renderTabBadges(); };
+  $('loCheckAll').onclick = ()=>{ close(); [...shoppingList].forEach(i=>boughtItems.add(i)); saveBought(); renderShoppingPanel(); renderTabBadges(); };
+  $('loDelBought').onclick = ()=>{
+    close();
+    showConfirmModal(`למחוק מהרשימה ${bought} פריטים שנקנו?`, ()=>{ clearBoughtInList(activeListId); renderShoppingPanel(); renderTabBadges(); });
+  };
 }
 
 /** Pick items from a saved/secondary list and merge them into the main shopping list. */
@@ -3398,6 +3475,72 @@ async function changeListSharing(rowId, listId, addEmail, removeEmail){
   return row;
 }
 
+// the list as plain text (what is still to buy, by department)
+function listShareText(rowId, listId){
+  const ref = allListRefs().find(r=>r.rowId === rowId && r.listId === listId);
+  const l = ref ? ref.list : getActiveList();
+  const bought = new Set(l.bought || []);
+  const items = (l.items || []).filter(i=>!bought.has(i));
+  const qtys = l.quantities || {};
+  const lines = [`🛒 ${l.name || 'רשימת קניות'}`];
+  const cats = [...new Set(allCategoryNames().concat(['אחר']))];
+  cats.forEach(c=>{
+    const these = items.filter(i=>catOf(i) === c);
+    if(!these.length) return;
+    lines.push('', c + ':');
+    these.sort((a,b)=>a.localeCompare(b,'he')).forEach(i=> lines.push('• ' + i + (qtys[i] ? ` (${qtys[i]})` : '')));
+  });
+  if(!items.length) lines.push('', '(הרשימה ריקה)');
+  return lines.join('\n');
+}
+// ---- invite links: whoever opens the link (signed in to the app) joins that one list ----
+async function createListInviteLink(rowId, listId){
+  let row = rowById(rowId);
+  if(!row) throw new Error('הרשימה לא נמצאה');
+  const kind = rowShareKind(row);
+  if(kind === 'household' || Object.keys(rowListsPayload(row)).length > 1){
+    const keep = await currentShareEmails(row);              // whoever shares it now keeps it
+    row = await detachListToOwnRow(rowId, listId);          // the link should give access to this list only
+    for(const e of keep){ try{ await shareRow(row.id, e); }catch(err){} }
+    delete sharedEmailsCache[row.id];
+    refreshListPickers();
+  }
+  const { data, error } = await sbClient.rpc('create_list_invite', { p_row: row.id });
+  if(error){
+    if(/create_list_invite|function|schema cache|PGRST202/i.test((error.message||'') + (error.code||''))) throw new Error('קישורי הזמנה עוד לא הופעלו בשרת — צריך להריץ פעם אחת את ה-SQL של קישורי ההזמנה');
+    throw error;
+  }
+  if(!data || typeof data !== 'string' || data.length < 8) throw new Error(data === 'not the owner' ? 'רק מי שיצר/ה את הרשימה יכול/ה ליצור קישור' : 'לא ניתן ליצור קישור כרגע');
+  return { rowId: row.id, url: location.origin + location.pathname + '?invite=' + encodeURIComponent(data) };
+}
+(function takeInviteFromUrl(){
+  let p; try{ p = new URLSearchParams(location.search); }catch(e){ return; }
+  const t = p.get('invite');
+  if(!t) return;
+  try{ localStorage.setItem('pending_invite', t); }catch(e){}
+  try{ history.replaceState(history.state, '', location.pathname); }catch(e){}
+})();
+let acceptingInvite = false;
+async function acceptPendingInvite(){
+  let t = null; try{ t = localStorage.getItem('pending_invite'); }catch(e){}
+  if(!t || acceptingInvite) return;
+  if(!currentUser || !sbClient){
+    setTimeout(()=>{ if(!currentUser){ switchTab('settings'); alert('קיבלתם הזמנה לרשימת קניות 🛒\nהתחברו לחשבון (כאן בהגדרות ← חשבון) — ומיד אחר כך תצטרפו לרשימה.'); } }, 600);
+    return;
+  }
+  acceptingInvite = true;
+  try{ localStorage.removeItem('pending_invite'); }catch(e){}
+  try{
+    const { data, error } = await sbClient.rpc('accept_list_invite', { p_token: t });
+    if(error) throw error;
+    if(!data){ alert('הקישור לרשימה לא תקף יותר (אולי פג תוקפו). בקשו קישור חדש.'); return; }
+    await loadAccountData();
+    const ref = allListRefs().find(r=>r.rowId === data);
+    if(ref){ rememberListToOpen(ref.rowId, ref.listId); await openPendingList(); showAddedToast(`✓ הצטרפת לרשימה "${ref.list.name}"`); }
+  }catch(e){ alert('לא הצלחנו לצרף אותך לרשימה: ' + (e.message || '')); }
+  finally{ acceptingInvite = false; }
+}
+
 function openListShareSheet(rowId, listId){
   const draw = async (statusText)=>{
     const row = rowById(rowId);
@@ -3413,7 +3556,9 @@ function openListShareSheet(rowId, listId){
       let people = [];
       try{ people = await currentShareEmails(row); }catch(e){ statusText = 'לא ניתן לטעון כרגע עם מי הרשימה משותפת'; }
       const me = (currentUser.email||'').toLowerCase();
-      const suggestions = householdMembers.map(m=>(m.email||'').toLowerCase()).filter(e=>e && e !== me && !people.includes(e));
+      const known = new Set(householdMembers.map(m=>(m.email||'').toLowerCase()));
+      Object.keys(sharedEmailsCache).forEach(id=>{ const c = sharedEmailsCache[id]; if(c && !c.error) c.emails.forEach(e=>known.add(String(e).toLowerCase())); });
+      const suggestions = [...known].filter(e=>e && e !== me && !people.includes(e)).sort();
       const multi = Object.keys(rowListsPayload(row)).length > 1;
       const note = kind === 'household'
         ? 'כרגע הרשימה משותפת עם כל משק הבית' + (people.some(e=>!householdMembers.some(m=>(m.email||'').toLowerCase() === e)) ? ' ועם מי שמופיע כאן מחוץ למשק הבית (שיתוף ישן — הוא רואה את כל רשימות משק הבית; הסרה שלו מכאן תסיר אותו מכולן)' : '') + '. הוספת מישהו כאן תחול רק על הרשימה הזו.'
@@ -3426,19 +3571,57 @@ function openListShareSheet(rowId, listId){
             <span class="sh-email" dir="ltr">${escHtml(e)}</span>
             <button type="button" class="sh-remove" data-email="${escAttr(e)}" aria-label="הסרת ${escAttr(e)}">הסירו</button></div>`).join('')
           : '<p class="custom-empty" style="margin:4px 0 8px;">רק אתם — הרשימה לא משותפת עם אף אחד.</p>'}
-        ${suggestions.length ? `<div class="sh-title" style="margin-top:14px;">הוסיפו מבני הבית</div>
-          <div class="sh-sugg">${suggestions.map(e=>`<button type="button" class="sh-add-chip" data-email="${escAttr(e)}">＋ ${escHtml(shortName(e))}</button>`).join('')}</div>` : ''}
         <div class="sh-title" style="margin-top:14px;">הוסיפו לפי אימייל</div>
         <div class="add-row" style="margin-bottom:4px;">
           <input type="email" id="shEmail" placeholder="אימייל של מי שרשום/ה באפליקציה" dir="ltr">
-          <button type="button" id="shAddBtn">הוסיפו</button>
-        </div>`;
+          <button type="button" id="shAddBtn">שתפו</button>
+        </div>
+        ${suggestions.length ? `<div class="sh-sugg-list">${suggestions.map(e=>{ const [bg, fg] = ovAvatarColor(e); return `
+          <div class="sh-sugg-row"><span class="ov-avatar" style="background:${bg};color:${fg}">${escHtml(e.charAt(0).toUpperCase())}</span>
+            <span class="sh-email" dir="ltr">${escHtml(e)}</span>
+            <button type="button" class="sh-add-chip" data-email="${escAttr(e)}">שתפו</button></div>`; }).join('')}</div>` : ''}`;
     }
+    const canLink = kind === 'own' || kind === 'household';
+    const quick = kind === 'local' ? '' : `
+      <p class="settings-hint" style="margin:0 0 10px;text-align:center;">כשהרשימה משותפת, כל שינוי מופיע אצל כולם מיד 🚀</p>
+      <div class="sh-quick">
+        ${canLink ? '<button type="button" class="sh-q" data-q="link"><span class="sh-q-ic" style="background:#757575">🔗</span><span>העתקת קישור</span></button>' : ''}
+        <button type="button" class="sh-q" data-q="wa"><span class="sh-q-ic" style="background:#25D366"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="#fff" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.1.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.2c0-.1-.2-.2-.4-.3z"/></svg></span><span>וואטסאפ</span></button>
+        <button type="button" class="sh-q" data-q="tg"><span class="sh-q-ic" style="background:#2AABEE"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="#fff" d="M21.5 3.6 2.9 10.8c-1.3.5-1.3 1.2-.2 1.6l4.8 1.5 1.8 5.6c.2.6.1.9.8.9.5 0 .7-.2 1-.5l2.3-2.3 4.8 3.6c.9.5 1.5.2 1.7-.8l3.2-15c.3-1.3-.5-1.9-1.6-1.4zM8.6 13.5l9.3-5.9c.5-.3.9-.1.5.2l-7.9 7.1-.3 3.4z"/></svg></span><span>טלגרם</span></button>
+        <button type="button" class="sh-q" data-q="text"><span class="sh-q-ic" style="background:#2196A6">📋</span><span>העתקת טקסט</span></button>
+        ${navigator.share ? '<button type="button" class="sh-q" data-q="more"><span class="sh-q-ic" style="background:#E0E0E0;color:#333">⋯</span><span>עוד</span></button>' : ''}
+      </div>`;
     const ov = openSheet('listShareSheet', `
       <div class="sheet-head"><h3>שיתוף · ${escHtml(name)}</h3><button type="button" class="sheet-x" id="shClose" aria-label="סגירה">×</button></div>
+      ${quick}
       ${body}
       <div class="cam-status" id="shStatus">${escHtml(statusText || '')}</div>`, 'top');
     ov.querySelector('#shClose').onclick = ()=> ov.remove();
+    ov.querySelectorAll('.sh-q').forEach(b=> b.onclick = async ()=>{
+      const st = ov.querySelector('#shStatus');
+      const what = b.dataset.q;
+      const text = listShareText(rowId, listId);
+      if(what === 'text'){
+        try{ await navigator.clipboard.writeText(text); st.textContent = '✓ הרשימה הועתקה כטקסט'; }catch(e){ st.textContent = 'לא ניתן להעתיק במכשיר הזה'; }
+        return;
+      }
+      let url = '';
+      if(canLink){
+        st.textContent = 'מכינים קישור...';
+        try{ const r = await createListInviteLink(rowId, listId); url = r.url; rowId = r.rowId; st.textContent = ''; }
+        catch(e){ st.textContent = e.message || 'לא ניתן ליצור קישור כרגע'; if(what === 'link') return; }
+      }
+      const msg = url ? `הצטרפו לרשימת הקניות "${name}" 🛒\n${url}` : text;
+      if(what === 'link'){
+        try{ await navigator.clipboard.writeText(url); st.textContent = '✓ הקישור הועתק — מי שיפתח אותו (עם חשבון באפליקציה) יצטרף לרשימה'; }catch(e){ st.textContent = url; }
+      } else if(what === 'wa'){
+        window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+      } else if(what === 'tg'){
+        window.open(url ? 'https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(`הצטרפו לרשימת הקניות "${name}" 🛒`) : 'https://t.me/share/url?url=&text=' + encodeURIComponent(msg), '_blank');
+      } else if(what === 'more'){
+        try{ await navigator.share(url ? { title: name, text: `הצטרפו לרשימת הקניות "${name}" 🛒`, url } : { title: name, text: msg }); }catch(e){}
+      }
+    });
     const run = async (add, remove)=>{
       const st = ov.querySelector('#shStatus');
       if(add && add.toLowerCase() === (currentUser.email||'').toLowerCase()){ st.textContent = 'זה האימייל שלכם 🙂'; return; }
@@ -3511,6 +3694,7 @@ async function openShoppingListFromOverview(id, rowId){
 }
 function backToShopOverview(){
   shopView = 'overview';
+  listSearchOpen = false; listSearchQ = '';
   closeShopAddBar();
   renderShoppingPanel();
   window.scrollTo(0, 0);
@@ -3714,6 +3898,15 @@ function renderShoppingPanel(){
       <button type="button" class="sl-icon sl-dots" id="slMenuBtn" aria-label="אפשרויות הרשימה">⋮</button>
       <div class="sl-prog" aria-label="${checkedCount} מתוך ${totalN} נקנו"><i style="width:${pct}%"></i></div>
     </div>`;
+  const prefs = getListPrefs();
+  if(listSearchOpen){
+    html += `<div class="sl-searchbar"><input type="search" id="slSearch" placeholder="חיפוש ברשימה..." value="${escAttr(listSearchQ)}" autocomplete="off"><button type="button" class="sl-search-x" id="slSearchClose" aria-label="סגירת החיפוש">×</button></div>`;
+  }
+  if(prefs.prices && totalN){
+    let all = 0, left = 0, missing = 0;
+    [...shoppingList].forEach(i=>{ const p = priceOfShopItem(i); if(p == null){ missing++; return; } all += p; if(!boughtItems.has(i)) left += p; });
+    html += `<div class="sl-total"><span>סה״כ <b>${fmtPrice(all)}</b></span><span>נשאר לקנות <b>${fmtPrice(left)}</b></span>${missing ? `<span class="sl-total-miss">${missing} בלי מחיר</span>` : ''}</div>`;
+  }
 
   const freqHtml = (items)=> items.length ? `<div class="shop-freq-section">
         <div class="shop-freq-title">בשימוש תדיר — לחצו להוספה</div>
@@ -3750,12 +3943,18 @@ function renderShoppingPanel(){
 
   // Group by category; the unchecked items first, the checked ones folded away below
   const catOrder = [...new Set(allCategoryNames().concat(['אחר']))];
+  const q = listSearchOpen ? norm(listSearchQ) : '';
   const itemRow = (item)=>{
     const bought = boughtItems.has(item);
-    const emoji = iconOf(item);
     const qty = qtyOfShopItem(item);
     const note = ((list.notes)||{})[item] || '';
-    const sub = [qty, note].filter(Boolean).join(' · ');
+    const price = prefs.prices ? priceOfShopItem(item) : null;
+    const sub = [qty, note, price != null ? fmtPrice(price) : ''].filter(Boolean).join(' · ');
+    if(prefs.view === 'visual') return `
+        <button type="button" class="sl-tile${bought?' bought':''}" data-item="${escAttr(item)}">
+          <span class="sl-tile-pic">${iconHtml(item)}${bought?'<span class="sl-tile-check">✓</span>':''}</span>
+          <span class="sl-tile-name">${escHtml(item)}</span>${sub?`<span class="sl-tile-sub">${escHtml(sub)}</span>`:''}
+        </button>`;
     return `
         <div class="shop-item sl-row ${bought?'bought':''}" data-item="${escAttr(item)}">
           <button type="button" class="shop-check" aria-label="${bought?'ביטול סימון':'סימון כנקנה'}">${bought?'✓':''}</button>
@@ -3763,23 +3962,30 @@ function renderShoppingPanel(){
           <button type="button" class="shop-item-icon" aria-label="שינוי קטגוריה">${iconHtml(item)}</button>
         </div>`;
   };
+  const blockCls = prefs.view === 'visual' ? 'sl-block sl-grid' : 'sl-block';
+  const order = [...shoppingList];
+  const sortItems = (arr)=> prefs.sort === 'added'
+    ? arr.slice().sort((a,b)=> order.indexOf(b) - order.indexOf(a))            // newest first
+    : arr.slice().sort((a,b)=> a.localeCompare(b,'he'));
   const groupsHtml = (items)=>{
+    if(prefs.sort !== 'cat') return `<div class="${blockCls}">${sortItems(items).map(itemRow).join('')}</div>`;
     const groups = {};
     items.forEach(item=>{ const cat = catOf(item); (groups[cat] = groups[cat] || []).push(item); });
     const nonEmpty = catOrder.filter(c=>groups[c] && groups[c].length);
     return nonEmpty.map(cat=>`
       ${nonEmpty.length > 1 ? `<div class="sl-cat">${escHtml(cat)}</div>` : ''}
-      <div class="sl-block">${groups[cat].sort((a,b)=>a.localeCompare(b,'he')).map(itemRow).join('')}</div>`).join('');
+      <div class="${blockCls}">${sortItems(groups[cat]).map(itemRow).join('')}</div>`).join('');
   };
-  const openItems = [...shoppingList].filter(i=>!boughtItems.has(i));
-  const doneItems = [...shoppingList].filter(i=>boughtItems.has(i));
-  html += openItems.length ? groupsHtml(openItems) : '<p class="shopping-empty">✓ הכול נקנה!</p>';
+  const matches = (i)=> !q || i.includes(q);
+  const openItems = [...shoppingList].filter(i=>!boughtItems.has(i) && matches(i));
+  const doneItems = [...shoppingList].filter(i=>boughtItems.has(i) && matches(i));
+  html += openItems.length ? groupsHtml(openItems) : (q ? `<p class="shopping-empty">לא נמצא "${escHtml(q)}" ברשימה</p>` : '<p class="shopping-empty">✓ הכול נקנה!</p>');
 
   if(checkedCount > 0){
     html += `<button class="shop-checked-toggle" id="toggleCheckedBtn" aria-expanded="${showCheckedShop?'true':'false'}">
       <span class="sl-chev${showCheckedShop?' up':''}">⌄</span> ${showCheckedShop ? 'הסתרת פריטים שסומנו' : `הצגת פריטים שסומנו (${checkedCount})`}
     </button>`;
-    if(showCheckedShop) html += `<div class="sl-block sl-done">${doneItems.sort((a,b)=>a.localeCompare(b,'he')).map(itemRow).join('')}</div>`;
+    if(showCheckedShop) html += `<div class="${blockCls} sl-done">${sortItems(doneItems).map(itemRow).join('')}</div>`;
   }
 
   // Frequent items (history) not already on the list
@@ -3806,6 +4012,17 @@ function renderShoppingPanel(){
     row.querySelector('.shop-item-icon').onclick = (e)=>{ e.stopPropagation(); openCategoryPicker(item); };
     row.onclick = ()=> openItemSheet(item);
   });
+  // visual list: tap = bought / not bought, long-press = edit
+  el.querySelectorAll('.sl-tile').forEach(t=>{
+    const item = t.dataset.item;
+    t.onclick = ()=>{ if(boughtItems.has(item)) boughtItems.delete(item); else boughtItems.add(item); saveBought(); renderShoppingPanel(); };
+    t.addEventListener('contextmenu', e=>{ e.preventDefault(); openItemSheet(item); });
+  });
+  const sIn = document.getElementById('slSearch');
+  if(sIn){
+    sIn.oninput = ()=>{ listSearchQ = sIn.value; const pos = sIn.selectionStart; renderShoppingPanel(); const n = document.getElementById('slSearch'); if(n){ n.focus(); try{ n.setSelectionRange(pos, pos); }catch(e){} } };
+    document.getElementById('slSearchClose').onclick = ()=>{ listSearchOpen = false; listSearchQ = ''; renderShoppingPanel(); };
+  }
 
   const toggleBtn = document.getElementById('toggleCheckedBtn');
   if(toggleBtn){
@@ -3844,7 +4061,7 @@ function wireListPageChrome(){
     openListShareSheet(activeShoppingRowId, activeListId);
   };
   const menu = document.getElementById('slMenuBtn');
-  if(menu) menu.onclick = ()=> openListMenu(activeListId, activeShoppingRowId);
+  if(menu) menu.onclick = ()=> openListOptionsSheet();
   const add = document.getElementById('slAddBtn');
   if(add) add.onclick = openShopAddBar;
   const more = document.getElementById('slMoreBtn');
