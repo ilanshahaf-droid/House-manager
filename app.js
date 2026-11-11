@@ -1,3 +1,4 @@
+const CODE_SYNC_ENABLED = false;   // the old "sync code" sharing (lists, recipes) is retired — lists are shared by e-mail only
 /* app.js — application logic */
 // A pristine, never-mutated snapshot of the built-in recipes exactly as hardcoded, keyed by
 // their original name — used to restore a recipe after editing without needing a page reload.
@@ -517,7 +518,9 @@ async function loadAccountData(){
     { kind:'category_settings', set:(r)=>{ accountCategorySettingsRows = r; },  rows:()=>accountCategorySettingsRows,  active:()=>activeCategorySettingsRowId, payload:()=>collectCategorySettings(), apply:applyCategorySettingsRow }
   ];
   for(const cfg of cfgs){
-    cfg.set(prefetchedByKind[cfg.kind] || await fetchUserDataRows(cfg.kind));
+    let fetched = prefetchedByKind[cfg.kind] || await fetchUserDataRows(cfg.kind);
+    if(cfg.kind === 'custom_recipes' || cfg.kind === 'app_state') fetched = fetched.filter(r=>r.owner_id === currentUser.id);   // recipes and fridge are not shared
+    cfg.set(fetched);
     const rows = cfg.rows();
     const own = rows.filter(r=>r.owner_id === currentUser.id);
     let mine = own.find(r=>!r.household_id && (cfg.kind !== 'shopping_lists' || (r.payload && r.payload.main))) || own.find(r=>!r.household_id) || own[0];
@@ -987,48 +990,15 @@ function renderAccountBox(){
         ${accountShoppingRows.map(r=>`<option value="${r.id}" ${r.id===activeShoppingRowId?'selected':''}>${escHtml(rowLabel(r))}</option>`).join('')}
       </select>
     </div>` : '';
-  const recPicker = accountRecipeRows.length>1 ? `
-    <div class="acct-picker">
-      <div class="settings-hint" style="font-weight:700;margin-bottom:4px;">אילו מתכונים להציג:</div>
-      <select id="recRowPicker" class="week-select">
-        ${accountRecipeRows.map(r=>`<option value="${r.id}" ${r.id===activeRecipesRowId?'selected':''}>${escHtml(rowLabel(r))}</option>`).join('')}
-      </select>
-    </div>` : '';
-  const statePicker = accountStateRows.length>1 ? `
-    <div class="acct-picker">
-      <div class="settings-hint" style="font-weight:700;margin-bottom:4px;">איזה מקרר ונתונים נוספים להציג:</div>
-      <select id="stateRowPicker" class="week-select">
-        ${accountStateRows.map(r=>`<option value="${r.id}" ${r.id===activeStateRowId?'selected':''}>${escHtml(rowLabel(r))}</option>`).join('')}
-      </select>
-    </div>` : '';
   el.innerHTML = `
     <div class="sync-box">
       <div class="sync-row">
         <span class="sync-status">✓ מחוברים כ-<b>${escHtml(currentUser.email)}</b></span>
         <button id="acctLogoutBtn">התנתקות</button>
       </div>
-      <div id="householdBox"></div>
-      ${recPicker}${statePicker}
-      <div class="settings-hint" style="margin:14px 0 6px;font-weight:700;">שיתוף נפרד לפי סוג מידע (מתקדם)</div>
       <div class="acct-picker">
-        <div class="settings-hint" style="font-weight:700;margin-bottom:4px;">רשימות קניות</div>
-        <p class="settings-hint" style="margin:0;">כל רשימה משותפת בנפרד: בלשונית הקניות לוחצים ⋮ ליד הרשימה ← "עם מי הרשימה משותפת".</p>
-      </div>
-      <div class="acct-picker">
-        <div class="settings-hint" style="font-weight:700;margin-bottom:4px;">שתפו את המתכונים שלכם עם:</div>
-        <div class="add-row">
-          <input type="email" id="shareRecipesEmail" placeholder="אימייל של השותף/ה">
-          <button id="shareRecipesBtn">שתפו</button>
-        </div>
-        <div id="sharedListRecipes"></div>
-      </div>
-      <div class="acct-picker">
-        <div class="settings-hint" style="font-weight:700;margin-bottom:4px;">שתפו את המקרר ושאר הנתונים (מועדפים, היסטוריה, תוכנית שבועית...) עם:</div>
-        <div class="add-row">
-          <input type="email" id="shareStateEmail" placeholder="אימייל של השותף/ה">
-          <button id="shareStateBtn">שתפו</button>
-        </div>
-        <div id="sharedListState"></div>
+        <div class="settings-hint" style="font-weight:700;margin-bottom:4px;">שיתוף רשימות קניות</div>
+        <p class="settings-hint" style="margin:0;">כל רשימה משותפת בנפרד, לפי אימייל: בלשונית הקניות לוחצים ⋮ ליד הרשימה ← "עם מי הרשימה משותפת". המתכונים והמקרר שלכם נשמרים בחשבון ומסונכרנים בין המכשירים שלכם בלבד.</p>
       </div>
       <div class="cam-status" id="acctStatus"></div>
     </div>`;
@@ -1037,51 +1007,6 @@ function renderAccountBox(){
   if(shopPickerEl) shopPickerEl.onchange = ()=>{
     const row = accountShoppingRows.find(r=>r.id===shopPickerEl.value);
     if(row){ applyShoppingRow(row); renderAll(); }
-  };
-  const recPickerEl = document.getElementById('recRowPicker');
-  if(recPickerEl) recPickerEl.onchange = ()=>{
-    const row = accountRecipeRows.find(r=>r.id===recPickerEl.value);
-    if(row){ applyRecipesRow(row); renderAll(); }
-  };
-  const statePickerEl = document.getElementById('stateRowPicker');
-  if(statePickerEl) statePickerEl.onchange = ()=>{
-    const row = accountStateRows.find(r=>r.id===statePickerEl.value);
-    if(row){ applyAppStateRow(row); renderAll(); }
-  };
-  renderHouseholdBox();
-  const status = document.getElementById('acctStatus');
-  if(document.getElementById('sharedListShopping')) renderSharedList('sharedListShopping', activeShoppingRowId);
-  renderSharedList('sharedListRecipes', activeRecipesRowId);
-  renderSharedList('sharedListState', activeStateRowId);
-  if(document.getElementById('shareShoppingBtn')) document.getElementById('shareShoppingBtn').onclick = async ()=>{
-    const email = norm(document.getElementById('shareShoppingEmail').value);
-    if(!email) return;
-    status.textContent = 'משתפים...';
-    try{
-      const result = await shareRow(activeShoppingRowId, email);
-      status.textContent = result === 'ok' ? '✓ שותף בהצלחה' : 'שגיאה: ' + result;
-      if(result === 'ok') renderSharedList('sharedListShopping', activeShoppingRowId, true);
-    }catch(e){ status.textContent = 'שגיאה: ' + (e.message||''); }
-  };
-  document.getElementById('shareRecipesBtn').onclick = async ()=>{
-    const email = norm(document.getElementById('shareRecipesEmail').value);
-    if(!email) return;
-    status.textContent = 'משתפים...';
-    try{
-      const result = await shareRow(activeRecipesRowId, email);
-      status.textContent = result === 'ok' ? '✓ שותף בהצלחה' : 'שגיאה: ' + result;
-      if(result === 'ok') renderSharedList('sharedListRecipes', activeRecipesRowId, true);
-    }catch(e){ status.textContent = 'שגיאה: ' + (e.message||''); }
-  };
-  document.getElementById('shareStateBtn').onclick = async ()=>{
-    const email = norm(document.getElementById('shareStateEmail').value);
-    if(!email) return;
-    status.textContent = 'משתפים...';
-    try{
-      const result = await shareRow(activeStateRowId, email);
-      status.textContent = result === 'ok' ? '✓ שותף בהצלחה' : 'שגיאה: ' + result;
-      if(result === 'ok') renderSharedList('sharedListState', activeStateRowId, true);
-    }catch(e){ status.textContent = 'שגיאה: ' + (e.message||''); }
   };
 }
 // ---- Display settings (simple mode, dark mode) follow the signed-in user to every device ----
@@ -2012,6 +1937,7 @@ function accountSessionLikely(){
   try{ return Object.keys(localStorage).some(k=>/^sb-.+-auth-token$/.test(k)); }catch(e){ return false; }
 }
 async function pushSync(){
+  if(!CODE_SYNC_ENABLED) return;
   if(!syncCode || accountSessionLikely()) return;
   try{
     await fetch(`${SUPABASE_URL}/rest/v1/shopping_sync?on_conflict=code`, {
@@ -2022,6 +1948,7 @@ async function pushSync(){
   }catch(e){ /* offline, or sync service unreachable — will retry on next change */ }
 }
 async function pullSync(){
+  if(!CODE_SYNC_ENABLED) return;
   if(!syncCode || accountSessionLikely()) return;
   try{
     const res = await fetch(`${SUPABASE_URL}/rest/v1/shopping_sync?code=eq.${syncCode}&select=items,bought`, {
@@ -2054,7 +1981,7 @@ async function createRecipeSyncBucket(){
   return code;
 }
 async function pushRecipeSync(){
-  if(!recipeSyncCode) return;
+  if(!CODE_SYNC_ENABLED || !recipeSyncCode) return;
   try{
     await fetch(`${SUPABASE_URL}/rest/v1/recipe_sync?on_conflict=code`, {
       method:'POST',
@@ -2064,7 +1991,7 @@ async function pushRecipeSync(){
   }catch(e){ /* offline, or sync service unreachable — will retry on next change */ }
 }
 async function pullRecipeSync(){
-  if(!recipeSyncCode) return;
+  if(!CODE_SYNC_ENABLED || !recipeSyncCode) return;
   try{
     const res = await fetch(`${SUPABASE_URL}/rest/v1/recipe_sync?code=eq.${recipeSyncCode}&select=recipes`, {
       headers: supaHeaders()
@@ -2168,6 +2095,7 @@ function wireRecipeSyncBox(){
 function renderRecipeSyncSection(){
   const el = document.getElementById('recipeSyncBox');
   if(!el) return;
+  if(!CODE_SYNC_ENABLED){ el.innerHTML = ''; return; }      // recipes are not shared (they sync only between your own devices)
   el.innerHTML = renderRecipeSyncBoxHTML();
   wireRecipeSyncBox();
 }
@@ -4013,52 +3941,17 @@ function renderShopManageBox(){
   const catOrder = [...new Set(allCategoryNames().concat(['אחר']))];
   el.innerHTML = `
     <div class="settings-subtitle" style="margin-top:4px;">כלים לרשימה אחת</div>
-    <div class="settings-hint" style="margin-bottom:12px;">הכלים שלמטה (העתקה, ייבוא, ניקוי וכו׳) חלים על הרשימה הפתוחה כרגע: <b>${escHtml(getActiveList().name)}</b>. שיתוף והתראות נקבעים לכל רשימה לפי השותפים שלה.</div>
-    ${renderSyncBoxHTML()}
+    <div class="settings-hint" style="margin-bottom:12px;">הכלים שלמטה (ייבוא, ניקוי, גרסאות קודמות) חלים על הרשימה הפתוחה כרגע: <b>${escHtml(getActiveList().name)}</b>. שיתוף והתראות נקבעים לכל רשימה לפי השותפים שלה.</div>
     <div class="shop-footer">
-      <button class="primary" id="copyShoppingBtn">📋 העתקה</button>
-      <button id="whatsappShareBtn">💬 וואטסאפ</button>
       <button id="importShopBtn">📥 ייבוא</button>
-      <button id="shareCodeBtn">🔗 קוד שיתוף</button>
       <button id="clearBoughtBtn">נקו מסומנים</button>
       <button id="clearShoppingBtn">נקו הכל</button>
     </div>
     <button type="button" class="import-btn secondary" id="shopHistoryBtn" style="margin-top:12px;">🕘 גרסאות קודמות של הרשימה</button>
   `;
   document.getElementById('shopHistoryBtn').onclick = openShopHistorySheet;
-  wireSyncBox();
-
-  document.getElementById('copyShoppingBtn').onclick = ()=>{
-    const lines = ['רשימת קניות:'];
-    catOrder.forEach(cat=>{
-      const items = [...shoppingList].filter(i=>catOf(i)===cat);
-      if(!items.length) return;
-      lines.push('', cat + ':');
-      items.sort((a,b)=>a.localeCompare(b,'he')).forEach(i=>{
-        const q = qtyOfShopItem(i);
-        lines.push((boughtItems.has(i)?'✓ ':'☐ ')+i+(q?` (${q})`:''));
-      });
-    });
-    const text = lines.join('\n');
-    if(navigator.clipboard) navigator.clipboard.writeText(text).then(()=>alert('הרשימה הועתקה')).catch(()=>{});
-  };
-
-  document.getElementById('whatsappShareBtn').onclick = ()=>{
-    const lines = ['רשימת קניות:'];
-    catOrder.forEach(cat=>{
-      const items = [...shoppingList].filter(i=>catOf(i)===cat && !boughtItems.has(i));
-      if(!items.length) return;
-      lines.push('', '*'+cat+'*');
-      items.forEach(i=>{
-        const q = qtyOfShopItem(i);
-        lines.push('• '+i+(q?` (${q})`:''));
-      });
-    });
-    window.open('https://wa.me/?text='+encodeURIComponent(lines.join('\n')), '_blank');
-  };
 
   document.getElementById('importShopBtn').onclick = importShoppingList;
-  document.getElementById('shareCodeBtn').onclick = shareShoppingCode;
 
   document.getElementById('clearBoughtBtn').onclick = ()=>{
     syncLiveSetsIntoList(); snapshotShopping(shoppingLists, 'לפני ניקוי מסומנים');

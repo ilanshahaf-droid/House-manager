@@ -646,14 +646,18 @@ async function start(){
   try{
     const { data: rows, error } = await sbClient.from('user_data').select('*').eq('kind','shopping_lists');
     if(error) throw error;
-    // Same choice as the main app: the household's shared list first, then your own personal list.
+    // Same choice as the main app: the list open there last, then (older setups) the household's list, then your own.
     let hid = null;
     try{
       const { data: mem, error: memErr } = await sbClient.from('household_members').select('household_id').eq('user_id', user.id).maybeSingle();
       if(!memErr && mem) hid = mem.household_id;
     }catch(e){ /* households not set up — personal mode */ }
     const all = rows || [];
-    let row = (hid && all.find(r=>r.household_id === hid))
+    let storedRow = null;
+    try{ storedRow = localStorage.getItem('active_shopping_row'); }catch(e){}
+    // the list you last had open in the app first (it may be one that someone shared with you)
+    let row = (storedRow && all.find(r=>r.id === storedRow))
+      || (hid && all.find(r=>r.household_id === hid))
       || all.find(r=>r.owner_id===user.id && !r.household_id && r.payload && r.payload.main)
       || all.find(r=>r.owner_id===user.id && !r.household_id)
       || all.find(r=>r.owner_id===user.id)
