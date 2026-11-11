@@ -2444,3 +2444,5 @@ body.ov-dragging .ov-fab{ opacity:.4; }
 .ce-note{ font-weight:400; font-size:13px; color:var(--ink-soft); }
 #ceIcon{ width:90px; flex:none; text-align:center; border:1px solid var(--line); border-radius:12px; padding:10px; font-size:18px; background:var(--paper); }
 #isCatLabel .icon-img{ width:22px; height:22px; vertical-align:middle; }
+
+.lm-row.lm-danger{ color:#C0392B; }

@@ -3884,7 +3884,10 @@ function openListActionsSheet(){
     <button type="button" class="lm-row" id="laShopMode">🔆  מצב קניות (מסך גדול בסופר)</button>
     <button type="button" class="lm-row" id="laClear" ${checkedCount?'':'disabled'}>🧹  נקו פריטים שסומנו${checkedCount?` (${checkedCount})`:''}</button>
     ${activeListId !== 'main' && shoppingList.size && shoppingLists.main ? '<button type="button" class="lm-row" id="laTransfer">➡️  העבירו פריטים לרשימה הראשית</button>' : ''}
-    <button type="button" class="lm-row" id="laSave" ${shoppingList.size?'':'disabled'}>💾  שמרו עותק של הרשימה לשימוש בהמשך</button>`, 'top');
+    <button type="button" class="lm-row" id="laSave" ${shoppingList.size?'':'disabled'}>💾  שמרו עותק של הרשימה לשימוש בהמשך</button>
+    <button type="button" class="lm-row" id="laImport">📥  ייבוא פריטים מטקסט (למשל מוואטסאפ)</button>
+    <button type="button" class="lm-row" id="laHistory">🕘  גרסאות קודמות של הרשימה</button>
+    <button type="button" class="lm-row lm-danger" id="laClearAll" ${shoppingList.size?'':'disabled'}>🗑  רוקנו את הרשימה</button>`, 'top');
   ov.querySelector('#laClose').onclick = ()=> ov.remove();
   ov.querySelector('#laShopMode').onclick = ()=>{ ov.remove(); openShoppingMode(); };
   ov.querySelector('#laClear').onclick = ()=>{
@@ -3899,6 +3902,20 @@ function openListActionsSheet(){
   const tr = ov.querySelector('#laTransfer');
   if(tr) tr.onclick = ()=>{ ov.remove(); openTransferToMainSheet(activeListId); };
   ov.querySelector('#laSave').onclick = ()=>{ ov.remove(); saveShoppingListForLater(); };
+  ov.querySelector('#laImport').onclick = ()=>{ ov.remove(); importShoppingList(); };
+  ov.querySelector('#laHistory').onclick = ()=>{ ov.remove(); openShopHistorySheet(); };
+  ov.querySelector('#laClearAll').onclick = ()=>{
+    ov.remove();
+    showConfirmModal(`לרוקן את כל הרשימה "${getActiveList().name || ''}"? (אפשר לשחזר מ"גרסאות קודמות")`, ()=>{
+      syncLiveSetsIntoList(); snapshotShopping(shoppingLists, 'לפני ריקון הרשימה');
+      shoppingList.clear();
+      boughtItems.clear();
+      saveShoppingList();
+      saveBought();
+      renderShoppingPanel();
+      renderTabBadges();
+    });
+  };
 }
 
 /** Snapshot the current shopping list as a new named list (ready to reuse later). */
@@ -3935,42 +3952,10 @@ function saveShoppingListForLater(){
   }, defaultName);
 }
 
+// The per-list tools (import, empty, previous versions) now live in the list's own ⌄ menu.
 function renderShopManageBox(){
   const el = document.getElementById('shoppingManageBox');
-  if(!el) return;
-  const catOrder = [...new Set(allCategoryNames().concat(['אחר']))];
-  el.innerHTML = `
-    <div class="settings-subtitle" style="margin-top:4px;">כלים לרשימה אחת</div>
-    <div class="settings-hint" style="margin-bottom:12px;">הכלים שלמטה (ייבוא, ניקוי, גרסאות קודמות) חלים על הרשימה הפתוחה כרגע: <b>${escHtml(getActiveList().name)}</b>. שיתוף והתראות נקבעים לכל רשימה לפי השותפים שלה.</div>
-    <div class="shop-footer">
-      <button id="importShopBtn">📥 ייבוא</button>
-      <button id="clearBoughtBtn">נקו מסומנים</button>
-      <button id="clearShoppingBtn">נקו הכל</button>
-    </div>
-    <button type="button" class="import-btn secondary" id="shopHistoryBtn" style="margin-top:12px;">🕘 גרסאות קודמות של הרשימה</button>
-  `;
-  document.getElementById('shopHistoryBtn').onclick = openShopHistorySheet;
-
-  document.getElementById('importShopBtn').onclick = importShoppingList;
-
-  document.getElementById('clearBoughtBtn').onclick = ()=>{
-    syncLiveSetsIntoList(); snapshotShopping(shoppingLists, 'לפני ניקוי מסומנים');
-    boughtItems.forEach(i=>shoppingList.delete(i));
-    boughtItems.clear();
-    saveShoppingList();
-    saveBought();
-    renderShoppingPanel();
-  };
-  document.getElementById('clearShoppingBtn').onclick = ()=>{
-    showConfirmModal('למחוק את כל רשימת הקניות?', ()=>{
-      syncLiveSetsIntoList(); snapshotShopping(shoppingLists, 'לפני מחיקת הרשימה');
-      shoppingList.clear();
-      boughtItems.clear();
-      saveShoppingList();
-      saveBought();
-      renderShoppingPanel();
-    });
-  };
+  if(el) el.innerHTML = '';
 }
 
 function wireShopToolbar(){
