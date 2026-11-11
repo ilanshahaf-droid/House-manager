@@ -1479,6 +1479,69 @@ function openSheet(id, innerHtml, cls){
   document.body.appendChild(overlay);
   return overlay;
 }
+// ---- icon picker: choose an emoji from the ones the app already uses, grouped by department ----
+const EXTRA_EMOJIS = ['🛒','💡','🔋','🎁','🎈','🎉','🕯️','🌸','💐','🪴','🐶','🐱','😼','🐦','🐟','🦴','👶','🍼','🧸','💊','🩹','🧹','🪣','🧯','🔧','🪛','📦','🖊️','📎','✂️','🧵','👕','🧦','👟','🎒','☂️','🪥','🧴','🧼','🙂'];
+function emojiPickerGroups(){
+  const groups = [];
+  const seen = new Set();
+  const names = {};                       // emoji → item names (for search and tooltips)
+  const add = (e, name)=>{ if(!e) return; (names[e] = names[e] || []).push(name); };
+  Object.keys(ING_EMOJI).forEach(n=> add(ING_EMOJI[n], n));
+  Object.keys(iconOverrides).forEach(n=> add(iconOverrides[n], n));
+  [...new Set(Object.keys(CATALOG).concat(customCategories))].forEach(cat=>{
+    const list = [];
+    const push = (e)=>{ if(e && !seen.has(e)){ seen.add(e); list.push(e); } };
+    push(categoryIconOf(cat));
+    (CATALOG[cat] || []).forEach(n=> push(iconOf(n)));
+    Object.keys(categoryOverrides).filter(n=>categoryOverrides[n] === cat).forEach(n=> push(iconOf(n)));
+    if(list.length) groups.push({ title: cat, emojis: list });
+  });
+  const rest = EXTRA_EMOJIS.filter(e=>!seen.has(e));
+  if(rest.length) groups.push({ title: 'כללי', emojis: rest });
+  return { groups, names };
+}
+function openEmojiPicker(onPick, current){
+  const { groups, names } = emojiPickerGroups();
+  const ov = openSheet('emojiPickerSheet', `
+    <div class="sheet-head"><h3>בחירת אייקון</h3><button type="button" class="sheet-x" id="epClose" aria-label="סגירה">×</button></div>
+    <input type="search" id="epSearch" class="ep-search" placeholder="חיפוש לפי מצרך, למשל: גבינה" autocomplete="off">
+    <div class="ep-body" id="epBody"></div>
+    ${current ? '<button type="button" class="lm-row" id="epClear">✕  בלי אייקון משלי (לחזור לאייקון הרגיל)</button>' : ''}`, 'top');
+  const body = ov.querySelector('#epBody');
+  const paint = (q)=>{
+    q = norm(q || '');
+    const match = (e)=> !q || (names[e] || []).some(n=>n.includes(q));
+    body.innerHTML = groups.map(g=>{
+      const list = g.emojis.filter(match);
+      if(!list.length) return '';
+      return `<div class="ep-title">${escHtml(g.title)}</div><div class="ep-grid">${list.map(e=>
+        `<button type="button" class="ep-emoji${e===current?' current':''}" data-e="${escAttr(e)}" title="${escAttr((names[e]||[]).slice(0,4).join(', '))}">${escHtml(e)}</button>`).join('')}</div>`;
+    }).join('') || '<p class="settings-hint" style="text-align:center">לא נמצא אייקון — אפשר להקליד אימוג׳י ישירות בשדה</p>';
+    body.querySelectorAll('.ep-emoji').forEach(b=> b.onclick = ()=>{ ov.remove(); onPick(b.dataset.e); });
+  };
+  paint('');
+  ov.querySelector('#epSearch').oninput = (e)=> paint(e.target.value);
+  ov.querySelector('#epClose').onclick = ()=> ov.remove();
+  const clr = ov.querySelector('#epClear');
+  if(clr) clr.onclick = ()=>{ ov.remove(); onPick(''); };
+}
+// puts a "choose" button next to an icon text field (typing an emoji by hand still works)
+function attachEmojiPicker(input){
+  if(!input || input.dataset.picker) return;
+  input.dataset.picker = '1';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ep-open';
+  btn.setAttribute('aria-label', 'בחירת אייקון מהרשימה');
+  btn.innerHTML = '<span class="ep-open-face">' + escHtml(input.value || '🙂') + '</span><span class="ep-open-arrow">▾</span>';
+  const face = btn.querySelector('.ep-open-face');
+  const sync = ()=>{ face.textContent = input.value || '🙂'; };
+  input.addEventListener('input', sync);
+  btn.onclick = ()=> openEmojiPicker((e)=>{ input.value = e; sync(); input.dispatchEvent(new Event('input', { bubbles:true })); }, input.value);
+  input.insertAdjacentElement('afterend', btn);
+  input._syncPicker = sync;
+}
+
 function refreshShoppingViews(){
   renderShoppingPanel();
   renderTabBadges();
@@ -1543,7 +1606,7 @@ function openItemSheet(item){
     <div class="is-label">קטגוריה</div>
     <button type="button" class="is-cat-btn" id="isCat"><span id="isCatLabel"></span><span class="is-cat-arrow">‹</span></button>
     <div class="is-label">אייקון משלכם (אימוג׳י, לא חובה)</div>
-    <input id="isIconInput" type="text" maxlength="4" value="${escAttr(iconOverrides[item] || '')}" placeholder="🙂" aria-label="אייקון">
+    <div class="is-icon-row"><input id="isIconInput" type="text" maxlength="4" value="${escAttr(iconOverrides[item] || '')}" placeholder="🙂" aria-label="אייקון"></div>
     <div class="is-error" id="isError"></div>
     <div class="is-actions">
       <button type="button" class="is-done" id="isDone">שמרו</button>
@@ -1553,6 +1616,7 @@ function openItemSheet(item){
   const paintCat = ()=>{ const c = catOf(item); $('isCatLabel').textContent = `${categoryIconOf(c)}  ${c}`; };
   paintCat();
   $('isClose').onclick = ()=> ov.remove();
+  attachEmojiPicker($('isIconInput'));
   const qtyInput = $('isQty');
   $('isPlus').onclick = ()=>{ qtyInput.value = stepQtyText(qtyInput.value, 1); };
   $('isMinus').onclick = ()=>{ qtyInput.value = stepQtyText(qtyInput.value, -1); };
@@ -4715,6 +4779,7 @@ function renderCatOverridesUI(){
         document.getElementById('catAssignInput').value = item;
         select.value = catOf(item);
         document.getElementById('catAssignIcon').value = iconOverrides[item] || '';
+        if(document.getElementById('catAssignIcon')._syncPicker) document.getElementById('catAssignIcon')._syncPicker();
         document.getElementById('catAssignInput').scrollIntoView({behavior:'smooth', block:'center'});
         document.getElementById('catAssignInput').focus();
       };
@@ -4729,6 +4794,8 @@ function renderCatOverridesUI(){
     });
   }
 
+  const iconField = document.getElementById('catAssignIcon');
+  attachEmojiPicker(iconField);
   const assignBtn = document.getElementById('catAssignBtn');
   if(assignBtn){
     assignBtn.onclick = ()=>{
@@ -4740,6 +4807,7 @@ function renderCatOverridesUI(){
       if(icon) setIconOverride(item, icon);
       document.getElementById('catAssignInput').value = '';
       document.getElementById('catAssignIcon').value = '';
+      if(iconField && iconField._syncPicker) iconField._syncPicker();
       renderCatOverridesUI();
       renderShoppingPanel();
     };
