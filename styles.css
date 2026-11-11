@@ -2430,3 +2430,5 @@ body.ov-dragging .ov-fab{ opacity:.4; }
 .ep-photo:active{ background:rgba(127,127,127,.12); }
 .ep-photo-err{ color:#C0392B; font-size:13px; min-height:0; }
 .ep-photo-err:empty{ display:none; }
+
+.ep-emoji.ep-pic .icon-img{ width:34px; height:34px; vertical-align:middle; }

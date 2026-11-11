@@ -1488,10 +1488,19 @@ function emojiPickerGroups(){
   const names = {};                       // emoji → item names (for search and tooltips)
   const add = (e, name)=>{ if(!e) return; (names[e] = names[e] || []).push(name); };
   Object.keys(ING_EMOJI).forEach(n=> add(ING_EMOJI[n], n));
-  Object.keys(iconOverrides).forEach(n=>{ if(!isImageIcon(iconOverrides[n])) add(iconOverrides[n], n); });
+  Object.keys(iconOverrides).forEach(n=> add(iconOverrides[n], n));
+  // pictures made from photos, by the department of the item they belong to (shown first in that group)
+  const pics = {};
+  Object.keys(iconOverrides).forEach(n=>{
+    if(!isImageIcon(iconOverrides[n])) return;
+    const c = catOf(n);
+    const cat = (CATALOG[c] || customCategories.includes(c)) ? c : 'אחר';
+    (pics[cat] = pics[cat] || []).push(iconOverrides[n]);
+  });
   [...new Set(Object.keys(CATALOG).concat(customCategories))].forEach(cat=>{
     const list = [];
     const push = (e)=>{ if(e && !seen.has(e)){ seen.add(e); list.push(e); } };
+    (pics[cat] || []).forEach(push);
     push(categoryIconOf(cat));
     (CATALOG[cat] || []).forEach(n=> push(iconOf(n)));
     Object.keys(categoryOverrides).filter(n=>categoryOverrides[n] === cat).forEach(n=> push(iconOf(n)));
@@ -1518,7 +1527,7 @@ function openEmojiPicker(onPick, current){
       const list = g.emojis.filter(match);
       if(!list.length) return '';
       return `<div class="ep-title">${escHtml(g.title)}</div><div class="ep-grid">${list.map(e=>
-        `<button type="button" class="ep-emoji${e===current?' current':''}" data-e="${escAttr(e)}" title="${escAttr((names[e]||[]).slice(0,4).join(', '))}">${escHtml(e)}</button>`).join('')}</div>`;
+        `<button type="button" class="ep-emoji${e===current?' current':''}${isImageIcon(e)?' ep-pic':''}" data-e="${escAttr(e)}" title="${escAttr((names[e]||[]).slice(0,4).join(', '))}">${isImageIcon(e) ? `<img class="icon-img" src="${e.replace(/"/g, '')}" alt="${escAttr((names[e]||[])[0] || '')}">` : escHtml(e)}</button>`).join('')}</div>`;
     }).join('') || '<p class="settings-hint" style="text-align:center">לא נמצא אייקון — אפשר להקליד אימוג׳י ישירות בשדה</p>';
     body.querySelectorAll('.ep-emoji').forEach(b=> b.onclick = ()=>{ ov.remove(); onPick(b.dataset.e); });
   };
