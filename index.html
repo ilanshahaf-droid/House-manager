@@ -248,41 +248,12 @@
 
     <div class="settings-topic">
       <button type="button" class="topic-head" aria-expanded="false">
-        <h2>סיווג מצרכים ואייקונים</h2><span class="topic-arrow">▾</span>
+        <h2>שיתוף סיווג מצרכים</h2><span class="topic-arrow">▾</span>
       </button>
       <div class="topic-body">
-        <p class="settings-hint">קבעו לאיזו קטגוריה ישויך מצרך ברשימת הקניות, ואפשר גם לתת לו אייקון משלכם (למשל "גבינה בולגרית" ← מוצרי חלב 🧀).</p>
-        <p class="settings-hint">שתפו את הסיווגים שלכם עם מי שאתם חולקים איתם רשימת קניות — כדי שהקטגוריות ייראו אצלו באותו אופן, בלי לשתף את המקרר או שאר הנתונים האישיים שלכם.</p>
+        <p class="settings-hint">את הקטגוריה והאייקון של מצרך עורכים ישירות ברשימת הקניות: לוחצים על המצרך (או על האייקון שלו). כדי לערוך קטגוריה — שם או אייקון — לוחצים על שם הקטגוריה ברשימה, וקטגוריה חדשה יוצרים מתוך בחירת הקטגוריה של מצרך.</p>
+        <p class="settings-hint">שתפו את הסיווגים שלכם עם מי שאתם חולקים איתם רשימת קניות — כדי שהקטגוריות ייראו אצלו באותו אופן.</p>
         <div id="categorySettingsSyncBox"></div>
-        <div class="add-row">
-          <input type="text" id="catAssignInput" placeholder="שם המצרך...">
-          <select id="catAssignSelect" class="week-select" style="flex:1 1 140px;"></select>
-          <input type="text" id="catAssignIcon" placeholder="אייקון (אימוג׳י)" style="flex:0 1 130px; border:1px solid var(--line); border-radius:10px; padding:8px 10px; font-size:15px; text-align:center; background:var(--surface);">
-          <button id="catAssignBtn">שמרו</button>
-        </div>
-        <div class="settings-subtitle" style="margin-top:20px;">קטגוריות</div>
-        <p class="settings-hint">מוסיפים קטגוריה חדשה משלכם — היא תופיע לצד הקבועות בכל מקום שבוחרים קטגוריה. "ערכו" ליד קטגוריה מאפשר לבחור לה אייקון (אימוג׳י או תמונה), ובקטגוריות שלכם גם לשנות שם.</p>
-        <div class="add-row">
-          <input type="text" id="newCatInput" placeholder="שם קטגוריה חדשה...">
-          <button id="addCatBtn">הוסיפו קטגוריה</button>
-        </div>
-        <div id="customCatsList" style="margin-top:10px;"></div>
-
-        <div class="section-head" style="margin-top:14px;">
-          <span class="settings-hint" style="margin:0; font-weight:700;">מצרכים שהוגדרו</span>
-          <button class="ranout-toggle" id="toggleAddedItemsBtn">▾</button>
-        </div>
-        <div id="catOverridesListWrap" style="display:none;">
-          <div id="catOverridesList"></div>
-        </div>
-
-        <div class="section-head" style="margin-top:14px;">
-          <span class="settings-hint" style="margin:0; font-weight:700;">מצרכים שהוסרו מקטגוריות</span>
-          <button class="ranout-toggle" id="toggleRemovedItemsBtn">▾</button>
-        </div>
-        <div id="removedItemsListWrap" style="display:none;">
-          <div id="removedItemsList"></div>
-        </div>
       </div>
     </div>
 

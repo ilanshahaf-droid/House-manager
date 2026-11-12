@@ -3981,7 +3981,7 @@ function renderShoppingPanel(){
     items.forEach(item=>{ const cat = catOf(item); (groups[cat] = groups[cat] || []).push(item); });
     const nonEmpty = catOrder.filter(c=>groups[c] && groups[c].length);
     return nonEmpty.map(cat=>`
-      ${nonEmpty.length > 1 ? `<div class="sl-cat">${escHtml(cat)}</div>` : ''}
+      ${nonEmpty.length > 1 ? `<button type="button" class="sl-cat" data-cat="${escAttr(cat)}" aria-label="עריכת הקטגוריה ${escAttr(cat)}">${escHtml(cat)}</button>` : ''}
       <div class="${blockCls}">${sortItems(groups[cat]).map(itemRow).join('')}</div>`).join('');
   };
   const matches = (i)=> !q || i.includes(q);
@@ -4006,6 +4006,7 @@ function renderShoppingPanel(){
   el.innerHTML = html;
   wireListPageChrome();
   renderShopManageBox();
+  el.querySelectorAll('.sl-cat[data-cat]').forEach(b=>{ b.onclick = ()=> openCategoryEditor(b.dataset.cat, ()=> renderShoppingPanel()); });
 
   el.querySelectorAll('.shop-item').forEach(row=>{
     const item = row.dataset.item;
@@ -4894,17 +4895,17 @@ function applyCollapsibleState(){
   if(remWrap){ remWrap.style.display = removedItemsOpen ? 'block' : 'none'; }
   if(remBtn){ remBtn.textContent = removedItemsOpen ? '▴' : '▾'; }
 }
-document.getElementById('toggleImportedRecipesBtn').onclick = ()=>{
+if(document.getElementById('toggleImportedRecipesBtn')) document.getElementById('toggleImportedRecipesBtn').onclick = ()=>{
   importedRecipesOpen = !importedRecipesOpen;
   localStorage.setItem('imported_recipes_open', importedRecipesOpen ? '1' : '0');
   applyCollapsibleState();
 };
-document.getElementById('toggleAddedItemsBtn').onclick = ()=>{
+if(document.getElementById('toggleAddedItemsBtn')) document.getElementById('toggleAddedItemsBtn').onclick = ()=>{
   addedItemsOpen = !addedItemsOpen;
   localStorage.setItem('added_items_open', addedItemsOpen ? '1' : '0');
   applyCollapsibleState();
 };
-document.getElementById('toggleRemovedItemsBtn').onclick = ()=>{
+if(document.getElementById('toggleRemovedItemsBtn')) document.getElementById('toggleRemovedItemsBtn').onclick = ()=>{
   removedItemsOpen = !removedItemsOpen;
   localStorage.setItem('removed_items_open', removedItemsOpen ? '1' : '0');
   applyCollapsibleState();
