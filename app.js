@@ -1672,7 +1672,7 @@ function openCategoryPicker(item, onPicked){
       </div>
     </div>`, 'top');
   const pick = (cat)=>{
-    const nativeCat = ING_TO_CAT[item] || 'אחר';
+    const nativeCat = defaultCatOf(item);
     if(cat === nativeCat) setCategoryOverride(item, null); else setCategoryOverride(item, cat);
     ov.remove();
     refreshShoppingViews();
