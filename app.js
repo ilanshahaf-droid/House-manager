@@ -1326,12 +1326,29 @@ function showDateModal(message, onSubmit, defaultValue, onClear){
 
 function createShoppingList(){
   showPromptModal('שם הרשימה החדשה:', async (name)=>{
-    const prim = currentUser ? primaryShoppingRow() : null;
-    if(prim && prim.id !== activeShoppingRowId){
-      const firstId = Object.keys(rowListsPayload(prim))[0] || 'main';
-      await activateListRef(prim.id, firstId);
-    }
     const id = 'list_' + Date.now();
+    // signed in: every new list gets its own private row, so it never inherits the sharers of
+    // whatever row (e.g. a shared main list) happens to be open
+    if(currentUser && sbClient){
+      try{
+        if(shoppingPushPending || shoppingPushInFlight) await pushShoppingRow();
+        const { data: created, error } = await sbClient.from('user_data').insert({
+          owner_id: currentUser.id, owner_email: currentUser.email, kind: 'shopping_lists',
+          payload: { [id]: { name, items: [], bought: [], syncCode: null } }
+        }).select().single();
+        if(error || !created) throw (error || new Error('create failed'));
+        accountShoppingRows.push(created);
+        closeSheet('listsSheet');
+        await activateListRef(created.id, id);
+        if(shopOverviewEnabled()){ shopView = 'list'; }
+        refreshShoppingViews();
+        return;
+      }catch(e){
+        console.warn('new list row failed', e);
+        showAddedToast('לא הצלחתי ליצור את הרשימה בחשבון — נסו שוב');
+        return;
+      }
+    }
     shoppingLists[id] = {name, items: [], bought: [], syncCode: null};
     localStorage.setItem('shopping_lists', JSON.stringify(shoppingLists));
     closeSheet('listsSheet');
