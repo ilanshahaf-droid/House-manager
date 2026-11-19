@@ -562,6 +562,7 @@ async function loadAccountData(){
   saveListsOverviewCache();
   prefetchShareEmails();
   refreshPushRegistration();
+  noticeNewSharedLists();
   if(!acceptingInvite) acceptPendingInvite();
 }
 // ---- quick start: the lists page is shown from the last known copy while the fresh data loads ----
@@ -3422,6 +3423,7 @@ async function refreshShoppingRowsCache(force){
     if(!rows.length) return;
     const before = JSON.stringify(accountShoppingRows.map(r=>[r.id, r.id===activeShoppingRowId ? null : r.payload]));
     accountShoppingRows = rows;
+    noticeNewSharedLists();
     const after = JSON.stringify(accountShoppingRows.map(r=>[r.id, r.id===activeShoppingRowId ? null : r.payload]));
     if(before !== after) refreshListPickers();
   }catch(e){}
@@ -3520,11 +3522,14 @@ async function changeListSharing(rowId, listId, addEmail, removeEmail){
     row = await detachListToOwnRow(rowId, listId);
     cur = new Set();
   }
+  const justAdded = [];
   for(const e of desired){
     if(cur.has(e)) continue;
     const r = await shareRow(row.id, e);
     if(r !== 'ok') throw new Error(r === 'user not found' ? `${e} עדיין לא רשום/ה באפליקציה — צריך קודם להתחבר אליה פעם אחת` : r);
+    if(!current.includes(e)) justAdded.push(e);   // not people who were already on it before a move to its own row
   }
+  if(justAdded.length) notifyAddedToList(row.id, listId, justAdded);
   for(const e of cur){
     if(desired.has(e)) continue;
     const { data, error } = await sbClient.rpc('unshare_data_with_email', { row_id: row.id, target_email: e });
@@ -6293,6 +6298,31 @@ async function openPendingList(){
   try{ history.replaceState(history.state, '', location.pathname); }catch(e){}
 })();
 function openListFromUrl(){ return openPendingList(); }
+
+// ---- "you were added to a list" ----
+// 1) a push to the person's devices right when they are added (server: notify-shopping, action 'shared')
+function notifyAddedToList(rowId, listId, emails){
+  if(!sbClient || !currentUser || !emails || !emails.length) return;
+  try{ sbClient.functions.invoke('notify-shopping', { body: { action: 'shared', row_id: rowId, list_id: listId, emails } }).catch(()=>{}); }catch(e){}
+}
+// 2) in the app: the first time a list someone else shared with me shows up, say so (covers devices without push)
+function noticeNewSharedLists(){
+  if(!currentUser) return;
+  const key = 'seen_shared_rows_' + currentUser.id;
+  const foreign = accountShoppingRows.filter(r=>r.owner_id && r.owner_id !== currentUser.id && !r.household_id);
+  let seen = null;
+  try{ seen = JSON.parse(localStorage.getItem(key) || 'null'); }catch(e){}
+  const ids = foreign.map(r=>r.id);
+  if(!Array.isArray(seen)){ try{ localStorage.setItem(key, JSON.stringify(ids)); }catch(e){} return; }   // first run: just remember
+  const fresh = foreign.filter(r=>!seen.includes(r.id));
+  if(!fresh.length) return;
+  try{ localStorage.setItem(key, JSON.stringify([...new Set(seen.concat(ids))])); }catch(e){}
+  const names = [];
+  fresh.forEach(r=>{ Object.values(r.payload || {}).forEach(l=>{ if(l && l.name) names.push(l.name); }); });
+  const who = String(fresh[0].owner_email || '').split('@')[0] || 'מישהו';
+  const what = names.length === 1 ? `לרשימה "${names[0]}"` : names.length ? `לרשימות: ${names.slice(0,3).join(', ')}` : 'לרשימת קניות';
+  showAddedToast(`👋 ${who} צירף/ה אותך ${what}`);
+}
 
 // ---- Web Push (works with the notify-shopping Edge Function; see push_setup.sql) ----
 function urlB64ToUint8Array(b64){
