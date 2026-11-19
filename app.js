@@ -13,7 +13,8 @@ const BUILTIN_RECIPE_NAMES = new Set(RECIPES.map(r=>r.name));
 (function pruneCustomRecipesAgainstBuiltins(){
   const builtinNames = BUILTIN_RECIPE_NAMES;
   const before = customRecipes.length;
-  customRecipes = customRecipes.filter(r=>!builtinNames.has(r.name));
+  // also an imported copy of a recipe that was baked in under a corrected name
+  customRecipes = customRecipes.filter(r=>!builtinNames.has(r.name) && !(typeof RECIPE_RENAMES !== 'undefined' && RECIPE_RENAMES[r.name] && builtinNames.has(RECIPE_RENAMES[r.name])));
   if(customRecipes.length !== before) localStorage.setItem('custom_recipes', JSON.stringify(customRecipes));
 })();
 RECIPES.push(...customRecipes);
@@ -168,7 +169,9 @@ function collectAppState(){
     learnedBarcodes,
     autoResetEnabled,
     protectedCategories,
-    recipeOverrides
+    recipeOverrides,
+    customCourses,
+    recipeCourseChoice
   };
 }
 function applyAppStateRow(row){
@@ -187,6 +190,10 @@ function applyAppStateRow(row){
   autoResetEnabled = !!p.autoResetEnabled;
   protectedCategories = migrateCategoryList(p.protectedCategories || ["מזווה ויבש"]);
   recipeOverrides = p.recipeOverrides || {};
+  if(Array.isArray(p.customCourses)) customCourses = p.customCourses;
+  if(p.recipeCourseChoice && typeof p.recipeCourseChoice === 'object') recipeCourseChoice = p.recipeCourseChoice;
+  localStorage.setItem('custom_courses', JSON.stringify(customCourses));
+  localStorage.setItem('recipe_course_choice', JSON.stringify(recipeCourseChoice));
   Object.keys(weeklyPlan).forEach(day=>{ if(typeof weeklyPlan[day] === 'string') weeklyPlan[day] = weeklyPlan[day] ? [weeklyPlan[day]] : []; });
   localStorage.setItem('fridge_items', JSON.stringify([...fridge]));
   localStorage.setItem('fridge_expiry', JSON.stringify(fridgeExpiry));
@@ -2625,6 +2632,10 @@ function wireCardActions(card, r, missing){
       suggestAlternative(r);
     };
   }
+  const courseBtn = card.querySelector('.course-tag');
+  if(courseBtn){
+    courseBtn.onclick = (e)=>{ e.stopPropagation(); openRecipeCoursePicker(r); };
+  }
   const editBtn = card.querySelector('.edit-recipe-card-btn');
   if(editBtn){
     editBtn.onclick = (e)=>{
@@ -2632,6 +2643,56 @@ function wireCardActions(card, r, missing){
       editRecipeInSheet(r.name);
     };
   }
+}
+
+// ---- recipe categories: choose a recipe's category, add / remove your own categories ----
+function saveRecipeCourses(){
+  localStorage.setItem('custom_courses', JSON.stringify(customCourses));
+  localStorage.setItem('recipe_course_choice', JSON.stringify(recipeCourseChoice));
+  scheduleAppStatePush();
+}
+function promptNewCourse(onAdded){
+  showPromptModal('שם הקטגוריה החדשה:', (name)=>{
+    name = norm(String(name || ''));
+    if(!name) return;
+    if(name === 'הכל'){ alert('השם הזה שמור — בחרו שם אחר'); return; }
+    if(!allRecipeCourses().includes(name)){ customCourses.push(name); saveRecipeCourses(); }
+    if(onAdded) onAdded(name);
+  });
+}
+function openRecipeCoursePicker(r){
+  const cur = courseOf(r);
+  const def = defaultCourseOf(r);
+  const ov = openSheet('coursePickSheet', `
+    <div class="sheet-head"><h3>קטגוריה: ${escHtml(r.name)}</h3><button type="button" class="sheet-x" id="cpClose" aria-label="סגירה">×</button></div>
+    <div class="course-pick-list">
+      ${allRecipeCourses().map(c=>`<div class="course-pick-row">
+        <button type="button" class="lm-row course-pick${c===cur?' active':''}" data-course="${escAttr(c)}">${courseIcon(c)}  ${escHtml(c)}${c===cur?'  ✓':''}</button>
+        ${customCourses.includes(c) ? `<button type="button" class="course-del" data-del="${escAttr(c)}" aria-label="מחיקת הקטגוריה ${escAttr(c)}">🗑</button>` : ''}
+      </div>`).join('')}
+    </div>
+    <button type="button" class="lm-row" id="cpNew">➕  קטגוריה חדשה…</button>
+    ${recipeCourseChoice[r.name] ? `<p class="settings-hint">ברירת המחדל של המתכון: ${escHtml(def)}</p>` : ''}`, 'top');
+  const done = ()=>{ ov.remove(); renderRecipes(); };
+  ov.querySelector('#cpClose').onclick = ()=> ov.remove();
+  const choose = (c)=>{
+    if(c === def) delete recipeCourseChoice[r.name]; else recipeCourseChoice[r.name] = c;
+    saveRecipeCourses();
+    done();
+  };
+  ov.querySelectorAll('.course-pick').forEach(b=>{ b.onclick = ()=> choose(b.dataset.course); });
+  ov.querySelectorAll('.course-del').forEach(b=>{ b.onclick = ()=>{
+    const c = b.dataset.del;
+    const n = Object.values(recipeCourseChoice).filter(x=>x === c).length;
+    showConfirmModal(`למחוק את הקטגוריה "${c}"?${n ? ` ${n} מתכונים שבה יחזרו לקטגוריה הרגילה שלהם.` : ''}`, ()=>{
+      customCourses = customCourses.filter(x=>x !== c);
+      Object.keys(recipeCourseChoice).forEach(k=>{ if(recipeCourseChoice[k] === c) delete recipeCourseChoice[k]; });
+      if(recipeCourse === c){ recipeCourse = 'all'; localStorage.setItem('recipes_course', 'all'); }
+      saveRecipeCourses();
+      done();
+    });
+  }; });
+  ov.querySelector('#cpNew').onclick = ()=>{ ov.remove(); promptNewCourse(c=>{ recipeCourseChoice[r.name] = c; saveRecipeCourses(); renderRecipes(); }); };
 }
 
 function suggestAlternative(base){
@@ -2849,12 +2910,13 @@ function renderRecipes(){
   if(byCourse){
     courseCounts = {};
     list.forEach(r=>{ const c = courseOf(r); courseCounts[c] = (courseCounts[c]||0) + 1; });
-    if(recipeCourse !== 'all' && !RECIPE_COURSES.includes(recipeCourse)) recipeCourse = 'all';
+    if(recipeCourse !== 'all' && !allRecipeCourses().includes(recipeCourse)) recipeCourse = 'all';
     if(recipeCourse !== 'all') list = list.filter(r=>courseOf(r) === recipeCourse);
   }
 
   if(byCourse){
-    const order = (r)=> RECIPE_COURSES.indexOf(courseOf(r));
+    const courses = allRecipeCourses();
+    const order = (r)=> courses.indexOf(courseOf(r));
     list.sort((a,b)=> order(a) - order(b) || a.name.localeCompare(b.name,'he'));
   } else if(fridge.size>0 && !showAll){
     list.sort((a,b)=> (b.haveCount/b.total) - (a.haveCount/a.total) || b.haveCount - a.haveCount
@@ -2863,6 +2925,29 @@ function renderRecipes(){
     list.sort((a,b)=> a.name.localeCompare(b.name,'he'));
   }
 
+  let chipsEl = null;
+  if(byCourse){
+    const chips = document.createElement('div');
+    chips.className = 'course-chips';
+    const total = Object.values(courseCounts).reduce((a,b)=>a+b, 0);
+    chips.innerHTML = `<button type="button" class="course-chip${recipeCourse==='all'?' active':''}" data-course="all">הכל <span>${total}</span></button>` +
+      allRecipeCourses().map(c=>`<button type="button" class="course-chip${recipeCourse===c?' active':''}" data-course="${escAttr(c)}">${courseIcon(c)} ${escHtml(c)} <span>${courseCounts[c]||0}</span></button>`).join('') +
+      `<button type="button" class="course-chip course-chip-add" id="courseAddChip">+ קטגוריה</button>`;
+    chips.querySelector('#courseAddChip').onclick = ()=> promptNewCourse(c=>{ recipeCourse = c; localStorage.setItem('recipes_course', c); renderRecipes(); });
+    chips.querySelectorAll('.course-chip[data-course]').forEach(b=>{ b.onclick = ()=>{
+      recipeCourse = b.dataset.course; localStorage.setItem('recipes_course', recipeCourse); renderRecipes();
+    }; });
+    chipsEl = chips;
+  }
+  if(list.length===0 && byCourse && recipeCourse !== 'all'){
+    el.innerHTML = '';
+    el.appendChild(chipsEl);
+    const p = document.createElement('p');
+    p.className = 'empty-state';
+    p.textContent = 'אין עדיין מתכונים בקטגוריה הזו. כדי לשייך מתכון, חזרו ל"הכל" ולחצו על תגית הקטגוריה (✎) בכרטיס שלו.';
+    el.appendChild(p);
+    return;
+  }
   if(list.length===0){
     const readyEmpty = filters.readyNow && fridge.size>0;
     el.innerHTML = readyEmpty
@@ -2879,17 +2964,7 @@ function renderRecipes(){
   }
 
   el.innerHTML='';
-  if(byCourse){
-    const chips = document.createElement('div');
-    chips.className = 'course-chips';
-    const total = Object.values(courseCounts).reduce((a,b)=>a+b, 0);
-    chips.innerHTML = `<button type="button" class="course-chip${recipeCourse==='all'?' active':''}" data-course="all">הכל <span>${total}</span></button>` +
-      RECIPE_COURSES.map(c=>`<button type="button" class="course-chip${recipeCourse===c?' active':''}" data-course="${escAttr(c)}">${RECIPE_COURSE_ICONS[c]||''} ${escHtml(c)} <span>${courseCounts[c]||0}</span></button>`).join('');
-    chips.querySelectorAll('.course-chip').forEach(b=>{ b.onclick = ()=>{
-      recipeCourse = b.dataset.course; localStorage.setItem('recipes_course', recipeCourse); renderRecipes();
-    }; });
-    el.appendChild(chips);
-  }
+  if(chipsEl) el.appendChild(chipsEl);
   if(showAll && !byCourse){
     const count = document.createElement('div');
     count.className = 'recipe-count';
@@ -2904,7 +2979,7 @@ function renderRecipes(){
         lastLetter = c;
         const hd = document.createElement('div');
         hd.className = 'recipe-letter recipe-course-head';
-        hd.textContent = `${RECIPE_COURSE_ICONS[c]||''} ${c}`;
+        hd.textContent = `${courseIcon(c)} ${c}`;
         el.appendChild(hd);
       }
     } else if(showAll){
@@ -2930,7 +3005,7 @@ function renderRecipes(){
       </div>
       <div class="recipe-meta">${escHtml(r.time)}${isFull? ' · יש לכם הכל' : ''}${cooked? ' · <span class="cooked-badge">✓ בישלתם</span>' : ''}${usesExpiring? ' · <span class="expiring-badge">♻️ מנצל מה שעומד לפוג</span>' : ''}</div>
       <div class="recipe-tags">
-        <span class="tag">${escHtml(courseOf(r))}</span>
+        <button type="button" class="tag course-tag" title="שינוי קטגוריה">${courseIcon(courseOf(r))} ${escHtml(courseOf(r))} ✎</button>
         <span class="tag">${escHtml(r.cuisine||'כללי')}</span>
         <span class="tag">${escHtml(r.difficulty||'קל')}</span>
         ${r.healthy?'<span class="tag">בריא</span>':''}
@@ -5480,6 +5555,9 @@ function renderImportForm(parsed, editingName, editMeta, onDone){
       .map(p => p.qty ? {name: p.name, qty: p.qty} : p.name);
     const steps = document.getElementById('impSteps').value.split('\n').map(norm).filter(Boolean);
     const time = norm(document.getElementById('impTime').value) || 'לא צוין';
+    if(editingName && editingName !== name && recipeCourseChoice[editingName]){   // keep the chosen category through a rename
+      recipeCourseChoice[name] = recipeCourseChoice[editingName]; delete recipeCourseChoice[editingName]; saveRecipeCourses();
+    }
     if(!name || steps.length===0){
       alert('נא למלא לפחות שם מתכון ושלב הכנה אחד');
       return;
