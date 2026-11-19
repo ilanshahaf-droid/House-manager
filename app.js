@@ -2765,11 +2765,13 @@ function renderFilterRow(){
 }
 
 // 'fridge' = recipes that match what's in the fridge (default) · 'all' = every recipe, A–Z, as one long list
-let recipesView = localStorage.getItem('recipes_view') === 'all' ? 'all' : 'fridge';
+// 'course' = every recipe grouped by category (עיקריות / תוספות / מאפים / קינוחים / משקאות)
+let recipesView = (v=>(v === 'all' || v === 'course') ? v : 'fridge')(localStorage.getItem('recipes_view'));
+let recipeCourse = localStorage.getItem('recipes_course') || 'all';
 function setRecipesView(view){
-  recipesView = view === 'all' ? 'all' : 'fridge';
+  recipesView = (view === 'all' || view === 'course') ? view : 'fridge';
   localStorage.setItem('recipes_view', recipesView);
-  if(recipesView === 'all'){
+  if(recipesView !== 'fridge'){
     // the "ready now / almost ready" shortcuts belong to the fridge view
     filters.readyNow = false; filters.almostReady = false; readyNowAutoApplied = true;
   } else {
@@ -2784,10 +2786,10 @@ function paintRecipeViewToggle(){
     const on = b.dataset.view === recipesView;
     b.classList.toggle('active', on);
     b.setAttribute('aria-selected', on ? 'true' : 'false');
-    if(b.dataset.view === 'all') b.textContent = `📖 כל המתכונים (${RECIPES.length})`;
+    if(b.dataset.view === 'all') b.textContent = `📖 הכל (${RECIPES.length})`;
   });
   // In the full-list view the suggestion blocks are hidden, so the A–Z list starts right under the filters
-  document.body.classList.toggle('recipes-all', recipesView === 'all');
+  document.body.classList.toggle('recipes-all', recipesView !== 'fridge');
 }
 document.querySelectorAll('#recipeViewToggle button').forEach(b=>{
   b.onclick = ()=>{ if(b.dataset.view !== recipesView) setRecipesView(b.dataset.view); };
@@ -2796,7 +2798,8 @@ document.querySelectorAll('#recipeViewToggle button').forEach(b=>{
 function renderRecipes(){
   const el = document.getElementById('recipeResults');
   const searching = filters.search.trim().length>0;
-  const showAll = recipesView === 'all';
+  const byCourse = recipesView === 'course';
+  const showAll = recipesView === 'all' || byCourse;
   paintRecipeViewToggle();
 
   // Default: when fridge has items, prefer recipes you can make right now
@@ -2840,7 +2843,19 @@ function renderRecipes(){
   if(filters.cuisine!=='all') list = list.filter(r=>r.cuisine===filters.cuisine);
   if(filters.difficulty!=='all') list = list.filter(r=>r.difficulty===filters.difficulty);
 
-  if(fridge.size>0 && !showAll){
+  // category view: chips on top, then the list grouped by category
+  let courseCounts = null;
+  if(byCourse){
+    courseCounts = {};
+    list.forEach(r=>{ const c = courseOf(r); courseCounts[c] = (courseCounts[c]||0) + 1; });
+    if(recipeCourse !== 'all' && !RECIPE_COURSES.includes(recipeCourse)) recipeCourse = 'all';
+    if(recipeCourse !== 'all') list = list.filter(r=>courseOf(r) === recipeCourse);
+  }
+
+  if(byCourse){
+    const order = (r)=> RECIPE_COURSES.indexOf(courseOf(r));
+    list.sort((a,b)=> order(a) - order(b) || a.name.localeCompare(b.name,'he'));
+  } else if(fridge.size>0 && !showAll){
     list.sort((a,b)=> (b.haveCount/b.total) - (a.haveCount/a.total) || b.haveCount - a.haveCount
       || minutesOf(a) - minutesOf(b) || a.name.localeCompare(b.name,'he'));
   } else {
@@ -2863,7 +2878,18 @@ function renderRecipes(){
   }
 
   el.innerHTML='';
-  if(showAll){
+  if(byCourse){
+    const chips = document.createElement('div');
+    chips.className = 'course-chips';
+    const total = Object.values(courseCounts).reduce((a,b)=>a+b, 0);
+    chips.innerHTML = `<button type="button" class="course-chip${recipeCourse==='all'?' active':''}" data-course="all">הכל <span>${total}</span></button>` +
+      RECIPE_COURSES.map(c=>`<button type="button" class="course-chip${recipeCourse===c?' active':''}" data-course="${escAttr(c)}">${RECIPE_COURSE_ICONS[c]||''} ${escHtml(c)} <span>${courseCounts[c]||0}</span></button>`).join('');
+    chips.querySelectorAll('.course-chip').forEach(b=>{ b.onclick = ()=>{
+      recipeCourse = b.dataset.course; localStorage.setItem('recipes_course', recipeCourse); renderRecipes();
+    }; });
+    el.appendChild(chips);
+  }
+  if(showAll && !byCourse){
     const count = document.createElement('div');
     count.className = 'recipe-count';
     count.textContent = list.length === RECIPES.length ? `${list.length} מתכונים, לפי סדר האלף-בית` : `${list.length} מתוך ${RECIPES.length} מתכונים`;
@@ -2871,7 +2897,16 @@ function renderRecipes(){
   }
   let lastLetter = '';
   list.forEach(r=>{
-    if(showAll){
+    if(byCourse){
+      const c = courseOf(r);
+      if(c !== lastLetter){
+        lastLetter = c;
+        const hd = document.createElement('div');
+        hd.className = 'recipe-letter recipe-course-head';
+        hd.textContent = `${RECIPE_COURSE_ICONS[c]||''} ${c}`;
+        el.appendChild(hd);
+      }
+    } else if(showAll){
       const letter = (r.name || '').trim().charAt(0);
       if(letter && letter !== lastLetter){
         lastLetter = letter;
@@ -2894,6 +2929,7 @@ function renderRecipes(){
       </div>
       <div class="recipe-meta">${escHtml(r.time)}${isFull? ' · יש לכם הכל' : ''}${cooked? ' · <span class="cooked-badge">✓ בישלתם</span>' : ''}${usesExpiring? ' · <span class="expiring-badge">♻️ מנצל מה שעומד לפוג</span>' : ''}</div>
       <div class="recipe-tags">
+        <span class="tag">${escHtml(courseOf(r))}</span>
         <span class="tag">${escHtml(r.cuisine||'כללי')}</span>
         <span class="tag">${escHtml(r.difficulty||'קל')}</span>
         ${r.healthy?'<span class="tag">בריא</span>':''}
@@ -4992,11 +5028,12 @@ new MutationObserver(()=>optOutOfAutofill()).observe(document.body, { childList:
 
 function recipeFiltersActive(){
   return !!(filters.search || filters.diet !== 'all' || filters.maxTime || filters.readyNow || filters.almostReady || filters.hideCooked ||
-            filters.favoritesOnly || filters.cuisine !== 'all' || filters.difficulty !== 'all');
+            filters.favoritesOnly || filters.cuisine !== 'all' || filters.difficulty !== 'all' || (recipesView === 'course' && recipeCourse !== 'all'));
 }
 function clearAllRecipeFilters(){
   filters = { search:'', diet:'all', maxTime:0, readyNow:false, almostReady:false, hideCooked:false, favoritesOnly:false, cuisine:'all', difficulty:'all' };
   readyNowAutoApplied = true; // don't auto-reapply after user cleared
+  recipeCourse = 'all'; localStorage.setItem('recipes_course', 'all');
   const inp = document.getElementById('searchInput'); if(inp) inp.value = '';
   renderFilterRow();
   renderRecipes();
