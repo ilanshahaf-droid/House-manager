@@ -2595,7 +2595,7 @@ function wireCardActions(card, r, missing){
       missing.forEach(i=>shoppingList.add(i));
       saveShoppingList();
       renderAll();
-      showAddedToast(missing.length === 1 ? `✓ הפריט «${missing[0]}» נוסף לרשימה` : `✓ ${missing.length} פריטים נוספו לרשימה`, 2500);
+      showAddedToast(missing.length === 1 ? `✓ הפריט «${missing[0]}» נוסף לרשימה` : `✓ ${missing.length} פריטים נוספו לרשימה`, 2500, true);
     };
   }
   const favBtn = card.querySelector('.fav-btn');
@@ -4065,7 +4065,7 @@ function renderShoppingPanel(){
       saveShoppingList();
       saveBought();
       renderShoppingPanel();
-      showAddedToast(`✓ הפריט «${name}» נוסף לרשימה`, 2500);
+      showAddedToast(`✓ הפריט «${name}» נוסף לרשימה`, 2500, true);
       renderTabBadges();
     };
   });
@@ -4184,7 +4184,7 @@ function renderShoppingPanel(){
       saveShoppingList();
       saveBought();
       renderShoppingPanel();
-      showAddedToast(`✓ הפריט «${name}» נוסף לרשימה`, 2500);
+      showAddedToast(`✓ הפריט «${name}» נוסף לרשימה`, 2500, true);
       renderTabBadges();
     };
   });
@@ -4439,7 +4439,7 @@ function wireShopToolbar(){
       if(qtyInput) qtyInput.value = '';
       document.getElementById('shopAutocomplete').innerHTML = '';
       renderShoppingPanel();
-      showAddedToast(already ? `«${val}» כבר ברשימה` : `✓ הפריט «${val}» נוסף לרשימה`, 2500);
+      showAddedToast(already ? `«${val}» כבר ברשימה` : `✓ הפריט «${val}» נוסף לרשימה`, 2500, true);
     }
   };
   const btn = document.getElementById('shopAddBtn');
@@ -6245,7 +6245,8 @@ function flushAddedNotices(){
     showSystemNotification('רשימת הקניות עודכנה', lines.join('\n'));
   }
 }
-function showAddedToast(text, ms){
+// low = show it near the bottom, just above the add bar (confirmations of adding items)
+function showAddedToast(text, ms, low){
   let el = document.getElementById('addedToast');
   if(!el){
     el = document.createElement('div');
@@ -6256,6 +6257,7 @@ function showAddedToast(text, ms){
     document.body.appendChild(el);
   }
   el.textContent = text;
+  el.classList.toggle('low', !!low);
   el.classList.add('show');
   clearTimeout(showAddedToast._t);
   showAddedToast._t = setTimeout(()=>el.classList.remove('show'), ms || 6000);
