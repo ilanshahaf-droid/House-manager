@@ -2595,6 +2595,7 @@ function wireCardActions(card, r, missing){
       missing.forEach(i=>shoppingList.add(i));
       saveShoppingList();
       renderAll();
+      showAddedToast(missing.length === 1 ? `✓ הפריט «${missing[0]}» נוסף לרשימה` : `✓ ${missing.length} פריטים נוספו לרשימה`, 2500);
     };
   }
   const favBtn = card.querySelector('.fav-btn');
@@ -4064,6 +4065,7 @@ function renderShoppingPanel(){
       saveShoppingList();
       saveBought();
       renderShoppingPanel();
+      showAddedToast(`✓ הפריט «${name}» נוסף לרשימה`, 2500);
       renderTabBadges();
     };
   });
@@ -4182,6 +4184,7 @@ function renderShoppingPanel(){
       saveShoppingList();
       saveBought();
       renderShoppingPanel();
+      showAddedToast(`✓ הפריט «${name}» נוסף לרשימה`, 2500);
       renderTabBadges();
     };
   });
@@ -4424,6 +4427,7 @@ function wireShopToolbar(){
     const qtyInput = document.getElementById('shopAddQty');
     const val = norm(input.value);
     if(val){
+      const already = shoppingList.has(val) && !boughtItems.has(val);
       shoppingList.add(val);
       boughtItems.delete(val);
       recordUsage(val);
@@ -4435,6 +4439,7 @@ function wireShopToolbar(){
       if(qtyInput) qtyInput.value = '';
       document.getElementById('shopAutocomplete').innerHTML = '';
       renderShoppingPanel();
+      showAddedToast(already ? `«${val}» כבר ברשימה` : `✓ הפריט «${val}» נוסף לרשימה`, 2500);
     }
   };
   const btn = document.getElementById('shopAddBtn');
@@ -6240,7 +6245,7 @@ function flushAddedNotices(){
     showSystemNotification('רשימת הקניות עודכנה', lines.join('\n'));
   }
 }
-function showAddedToast(text){
+function showAddedToast(text, ms){
   let el = document.getElementById('addedToast');
   if(!el){
     el = document.createElement('div');
@@ -6253,7 +6258,7 @@ function showAddedToast(text){
   el.textContent = text;
   el.classList.add('show');
   clearTimeout(showAddedToast._t);
-  showAddedToast._t = setTimeout(()=>el.classList.remove('show'), 6000);
+  showAddedToast._t = setTimeout(()=>el.classList.remove('show'), ms || 6000);
 }
 function wireAddedNoticeSettings(){
   const nameInput = document.getElementById('displayNameInput');

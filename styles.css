@@ -1410,6 +1410,7 @@
     left:50%;
     transform:translate(-50%,-140%);
     z-index:400;
+    width:max-content;
     max-width:min(92vw,460px);
     background:var(--ink);
     color:var(--paper);
